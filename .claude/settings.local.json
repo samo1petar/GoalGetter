@@ -14,7 +14,8 @@
       "Bash(ACCESS_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjk2NGJmZmQ1MDY5MzczMGJmMjE1OTg5IiwiZW1haWwiOiJ0b255QGdvYWxnZXR0ZXIuY29tIiwiZXhwIjoxNzY4MjEyMjQ2LCJ0eXBlIjoiYWNjZXNzIn0.V0Welx-PcBkRNjxyHNx3m3y0_mYKSO4YdMAzLf9Eucg\")",
       "Bash(chmod:*)",
       "Bash(./api-helper.sh)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(npx create-next-app@14:*)"
     ],
     "deny": [],
     "ask": []
