@@ -25,23 +25,26 @@ GoalGetter features two distinct phases:
 ## Key Features
 
 - **Split-Screen Interface:** Document editor (left) + Real-time chat with AI coach (right)
-- **OAuth Authentication:** Sign up with Google or GitHub
+- **OAuth Authentication:** Sign up with Google or email/password
 - **Real-time Chat:** WebSocket-powered conversation with Claude AI
 - **Meeting Scheduling:** Automated scheduling with calendar sync
 - **Email Notifications:** Reminders for upcoming meetings
 - **Goal Templates:** Pre-built frameworks (SMART, OKR)
 - **PDF Export:** Export goals as formatted PDF documents
 - **Progress Tracking:** Monitor goal achievement over time
+- **Rate Limiting:** Fair usage enforcement with Redis-backed rate limiting
+- **Structured Logging:** JSON logging for production environments
+- **Comprehensive Error Handling:** Custom exceptions with consistent API responses
 
 ## Tech Stack
 
 ### Backend
 - **FastAPI** - Modern Python web framework
 - **MongoDB** - NoSQL database for flexible goal storage
-- **Redis** - Caching and message broker
+- **Redis** - Caching, rate limiting, and message broker
 - **Anthropic Claude** - AI coach with Tony Robbins persona
 - **Celery** - Background task processing
-- **Python-SocketIO** - Real-time WebSocket communication
+- **WebSocket** - Real-time communication
 
 ### Infrastructure
 - **Docker** - Containerization
@@ -53,7 +56,7 @@ GoalGetter features two distinct phases:
 ### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.11+ (for local development)
+- Python 3.12+ (for local development)
 - Anthropic API key
 - Google OAuth credentials (optional)
 - SendGrid API key (optional, for emails)
@@ -74,23 +77,26 @@ GoalGetter features two distinct phases:
 
 3. **Start services with Docker Compose:**
    ```bash
+   # Development
    docker-compose up -d
+
+   # Production
+   docker-compose -f docker-compose.prod.yml up -d
    ```
 
 4. **Access the application:**
    - API: http://localhost:8000
    - API Docs: http://localhost:8000/api/v1/docs
+   - ReDoc: http://localhost:8000/api/v1/redoc
    - Flower (Celery monitoring): http://localhost:5555
 
 ### Local Development
-
-For detailed backend setup, see [backend/README.md](backend/README.md)
 
 ```bash
 # Backend
 cd backend
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -99,33 +105,25 @@ uvicorn app.main:app --reload
 
 ```
 GoalGetter/
-├── backend/              # FastAPI backend
+├── backend/
 │   ├── app/
-│   │   ├── api/routes/  # API endpoints
-│   │   ├── core/        # Configuration
-│   │   ├── models/      # Database models
-│   │   ├── schemas/     # Pydantic schemas
-│   │   ├── services/    # Business logic
-│   │   └── main.py      # FastAPI app
+│   │   ├── api/routes/      # API endpoints
+│   │   ├── core/            # Configuration, database, security
+│   │   ├── models/          # MongoDB document models
+│   │   ├── schemas/         # Pydantic schemas
+│   │   ├── services/        # Business logic
+│   │   ├── tasks/           # Celery background tasks
+│   │   ├── templates/       # Email templates
+│   │   └── main.py          # FastAPI app
+│   ├── tests/               # Pytest tests
+│   ├── Dockerfile           # Multi-stage Docker build
 │   └── requirements.txt
-├── frontend/            # Frontend application (TBD)
-├── docker-compose.yml   # Docker services
-├── PROJECT_PLAN.md      # Comprehensive project documentation
-└── README.md           # This file
+├── docker-compose.yml       # Development Docker setup
+├── docker-compose.prod.yml  # Production Docker setup
+├── DEPLOYMENT.md            # Deployment guide
+├── PROJECT_PLAN.md          # Project documentation
+└── README.md                # This file
 ```
-
-## Documentation
-
-- **[PROJECT_PLAN.md](PROJECT_PLAN.md)** - Comprehensive project plan with:
-  - Detailed tech stack decisions
-  - Complete implementation roadmap (6 sprints)
-  - Database schema
-  - API endpoint reference
-  - Deployment guide
-  - Cost estimates
-  - Future enhancements
-
-- **[backend/README.md](backend/README.md)** - Backend-specific documentation
 
 ## API Documentation
 
@@ -133,39 +131,114 @@ Once the server is running, visit:
 - **Swagger UI:** http://localhost:8000/api/v1/docs
 - **ReDoc:** http://localhost:8000/api/v1/redoc
 
+### API Endpoints
+
+#### Authentication
+- `POST /api/v1/auth/signup` - Register new user
+- `POST /api/v1/auth/login` - Login with email/password
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `GET /api/v1/auth/google` - Google OAuth
+- `GET /api/v1/auth/me` - Get current user
+
+#### Goals
+- `GET /api/v1/goals` - List goals (with pagination, filtering)
+- `POST /api/v1/goals` - Create goal
+- `GET /api/v1/goals/{id}` - Get goal
+- `PUT /api/v1/goals/{id}` - Update goal
+- `DELETE /api/v1/goals/{id}` - Delete goal
+- `GET /api/v1/goals/{id}/export` - Export as PDF
+- `POST /api/v1/goals/from-template` - Create from template
+
+#### Templates
+- `GET /api/v1/templates` - List templates
+- `GET /api/v1/templates/{type}` - Get template (smart, okr, custom)
+
+#### Chat
+- `WS /api/v1/chat/ws` - WebSocket chat
+- `GET /api/v1/chat/access` - Check chat access
+- `GET /api/v1/chat/history` - Get chat history
+- `POST /api/v1/chat/send` - Send message (HTTP)
+- `DELETE /api/v1/chat/history` - Clear history
+
+#### Meetings
+- `POST /api/v1/meetings/setup` - Setup recurring meetings
+- `POST /api/v1/meetings` - Create meeting
+- `GET /api/v1/meetings` - List meetings
+- `GET /api/v1/meetings/next` - Get next meeting
+- `GET /api/v1/meetings/{id}` - Get meeting
+- `PUT /api/v1/meetings/{id}` - Update meeting
+- `DELETE /api/v1/meetings/{id}` - Cancel meeting
+- `POST /api/v1/meetings/{id}/complete` - Complete meeting
+
+#### Users
+- `GET /api/v1/users/me` - Get profile
+- `PUT /api/v1/users/me` - Update profile
+- `PATCH /api/v1/users/me/phase` - Change phase
+
+## Development
+
+### Running Tests
+
+```bash
+cd backend
+pytest                          # Run all tests
+pytest --cov=app tests/         # With coverage
+pytest -v tests/test_auth.py    # Specific test file
+```
+
+### Code Formatting
+
+```bash
+black app/
+isort app/
+flake8 app/
+```
+
+### Type Checking
+
+```bash
+mypy app/
+```
+
 ## Development Roadmap
 
-See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the complete 6-sprint roadmap.
+All 6 sprints have been completed.
 
-### Sprint 1: Foundation & Authentication ✅
+### Sprint 1: Foundation & Authentication
 - FastAPI project setup
 - MongoDB and Redis connections
-- OAuth authentication
+- JWT authentication
+- OAuth with Google
 
 ### Sprint 2: Goal Management
-- CRUD operations for goals
-- Goal templates system
+- Goal CRUD operations
+- Goal templates (SMART, OKR)
 - PDF export functionality
 
 ### Sprint 3: Real-time Chat & AI Coach
 - WebSocket integration
 - Anthropic Claude API
 - Tony Robbins persona
+- Chat access control
 
 ### Sprint 4: Meeting Scheduling & Calendar
-- Meeting scheduling logic
+- Meeting scheduling
 - Google Calendar integration
-- Meeting access gates
+- Phase transitions
 
 ### Sprint 5: Notifications & Background Jobs
-- Email notifications
-- Celery tasks for reminders
-- Scheduled meeting updates
+- Celery configuration
+- Email notifications (SendGrid)
+- Scheduled tasks (meeting reminders)
+- Rate limiting (slowapi)
 
 ### Sprint 6: Polish & Deployment
-- Error handling and logging
-- Docker deployment
-- Production deployment
+- Custom exception classes
+- Structured JSON logging
+- Security middleware (headers, CORS)
+- Production Docker setup
+- Comprehensive pytest tests
+- Deployment documentation
 
 ## Environment Variables
 
@@ -173,39 +246,55 @@ Key environment variables (see `backend/.env.example` for full list):
 
 ```bash
 # Required
-ANTHROPIC_API_KEY=sk-ant-your-api-key
+SECRET_KEY=<32-char-secret>
+JWT_SECRET_KEY=<32-char-secret>
 MONGODB_URI=mongodb://localhost:27017/goalgetter
 REDIS_URL=redis://localhost:6379/0
 
-# Optional but recommended
+# AI Coach (required for chat)
+ANTHROPIC_API_KEY=sk-ant-your-api-key
+
+# Optional
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 SENDGRID_API_KEY=your-sendgrid-api-key
-```
-
-## Testing
-
-```bash
-cd backend
-pytest
-pytest --cov=app tests/
+SENTRY_DSN=your-sentry-dsn
 ```
 
 ## Deployment
 
-### Option 1: Railway (Recommended)
-1. Push code to GitHub
-2. Connect Railway to your repository
-3. Add MongoDB and Redis plugins
-4. Configure environment variables
-5. Deploy!
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
-### Option 2: Docker
+### Quick Deploy
+
 ```bash
-docker-compose -f docker-compose.yml up -d
+# Production with Docker
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-See [PROJECT_PLAN.md](PROJECT_PLAN.md) for detailed deployment instructions.
+### Cloud Options
+- **Railway** - Simple deployment with built-in MongoDB/Redis
+- **AWS ECS** - Container deployment with ECR
+- **Google Cloud Run** - Serverless containers
+- **DigitalOcean App Platform** - Easy setup
+
+## Security Features
+
+- JWT authentication with refresh tokens
+- Password hashing with bcrypt
+- Rate limiting on all endpoints
+- CORS configuration
+- Security headers (X-Frame-Options, X-Content-Type-Options, etc.)
+- Input validation with Pydantic
+- Request ID tracking
+
+## Monitoring
+
+- Health check endpoint: `/health`
+- Status endpoint: `/status`
+- Structured JSON logging
+- Sentry integration (optional)
+- Celery Flower for task monitoring
 
 ## Contributing
 

@@ -33,11 +33,9 @@ google-api-python-client==2.116.0
 
 # Email
 sendgrid==6.11.0
-python-email-validator==2.1.0
 
 # Background Tasks
 celery==5.3.6
-celery-beat==2.5.0
 flower==2.0.1
 
 # WebSocket

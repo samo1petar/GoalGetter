@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        /* Reset styles */
+        body, table, td, p, a, li, blockquote {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+        table, td {
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+        }
+        img {
+            -ms-interpolation-mode: bicubic;
+            border: 0;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+        }
+
+        /* Base styles */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Container */
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        /* Header */
+        .email-header {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            color: #ffffff;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .email-header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .email-header .subtitle {
+            margin-top: 10px;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        /* Content */
+        .email-content {
+            padding: 40px 30px;
+            background-color: #ffffff;
+        }
+        .email-content h2 {
+            color: #4F46E5;
+            margin-top: 0;
+            font-size: 24px;
+        }
+        .email-content p {
+            margin: 15px 0;
+            color: #555555;
+        }
+
+        /* Info Box */
+        .info-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #4F46E5;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #4F46E5;
+        }
+
+        /* Meeting Box */
+        .meeting-box {
+            background-color: #ffffff;
+            border: 2px solid #4F46E5;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        .meeting-box h3 {
+            margin-top: 0;
+            color: #4F46E5;
+            font-size: 20px;
+        }
+        .meeting-box .detail {
+            margin: 10px 0;
+            font-size: 16px;
+        }
+        .meeting-box .detail strong {
+            color: #333333;
+        }
+
+        /* Button */
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 35px;
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+
+        /* List styles */
+        .email-content ul {
+            padding-left: 20px;
+            color: #555555;
+        }
+        .email-content li {
+            margin: 10px 0;
+        }
+        .email-content li strong {
+            color: #333333;
+        }
+
+        /* Celebration */
+        .celebration {
+            font-size: 48px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        /* Quote */
+        .quote {
+            font-style: italic;
+            color: #666666;
+            border-left: 3px solid #4F46E5;
+            padding-left: 20px;
+            margin: 25px 0;
+        }
+
+        /* Signature */
+        .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e5e5;
+        }
+        .signature p {
+            margin: 5px 0;
+        }
+
+        /* Footer */
+        .email-footer {
+            background-color: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            color: #666666;
+            font-size: 13px;
+        }
+        .email-footer p {
+            margin: 5px 0;
+        }
+        .email-footer a {
+            color: #4F46E5;
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+            }
+            .email-header, .email-content, .email-footer {
+                padding: 20px !important;
+            }
+            .email-header h1 {
+                font-size: 24px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+            <td style="padding: 20px 10px;">
+                <div class="email-container">
+                    <!-- Header -->
+                    <div class="email-header">
+                        <h1>{{ header_title }}</h1>
+                        {% if header_subtitle %}
+                        <p class="subtitle">{{ header_subtitle }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Content -->
+                    <div class="email-content">
+                        {% block content %}{% endblock %}
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="email-footer">
+                        <p><strong>{{ app_name }}</strong> - AI-Powered Goal Achievement</p>
+                        <p>Questions? Contact us at <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+                        <p style="margin-top: 15px; font-size: 11px;">
+                            You're receiving this email because you have an account with {{ app_name }}.
+                        </p>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

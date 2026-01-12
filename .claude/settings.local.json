@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(docker --version:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker ps:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m app.utils.db_init:*)",
+      "Bash(curl:*)",
+      "Bash(ACCESS_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjk2NGJmZmQ1MDY5MzczMGJmMjE1OTg5IiwiZW1haWwiOiJ0b255QGdvYWxnZXR0ZXIuY29tIiwiZXhwIjoxNzY4MjEyMjQ2LCJ0eXBlIjoiYWNjZXNzIn0.V0Welx-PcBkRNjxyHNx3m3y0_mYKSO4YdMAzLf9Eucg\")",
+      "Bash(chmod:*)",
+      "Bash(./api-helper.sh)",
+      "Bash(docker exec:*)"
     ],
     "deny": [],
     "ask": []

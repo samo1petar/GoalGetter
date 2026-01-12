@@ -2,9 +2,17 @@
 Application configuration using Pydantic settings.
 Loads configuration from environment variables.
 """
-from typing import List, Optional
-from pydantic import Field, field_validator
+from typing import List, Optional, Union
+from pydantic import Field, field_validator, BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing_extensions import Annotated
+
+
+def parse_cors(v: Union[str, List[str]]) -> List[str]:
+    """Parse CORS origins from comma-separated string or list."""
+    if isinstance(v, str):
+        return [origin.strip() for origin in v.split(",")]
+    return v
 
 
 class Settings(BaseSettings):
@@ -25,16 +33,13 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    # CORS (comma-separated string)
+    BACKEND_CORS_ORIGINS: str = "http://localhost:3000"
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
-    @classmethod
-    def assemble_cors_origins(cls, v: str | List[str]) -> List[str]:
-        """Parse CORS origins from string or list."""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def cors_origins(self) -> List[str]:
+        """Get CORS origins as list."""
+        return parse_cors(self.BACKEND_CORS_ORIGINS)
 
     # Database - MongoDB
     MONGODB_URI: str = "mongodb://localhost:27017/goalgetter"
@@ -47,7 +52,7 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 50
 
     # Anthropic Claude API
-    ANTHROPIC_API_KEY: str = Field(..., min_length=1)
+    ANTHROPIC_API_KEY: Optional[str] = None  # Required for Sprint 3+
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
     ANTHROPIC_MAX_TOKENS: int = 4096
     ANTHROPIC_TEMPERATURE: float = 0.7
@@ -115,7 +120,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore"
+        extra="ignore",
+        env_parse_enums=False
     )
 
     @property
