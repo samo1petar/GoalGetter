@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # Anthropic Claude API
     ANTHROPIC_API_KEY: Optional[str] = None  # Required for Sprint 3+
-    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    ANTHROPIC_MODEL: str  # Read from .env file
     ANTHROPIC_MAX_TOKENS: int = 4096
     ANTHROPIC_TEMPERATURE: float = 0.7
 
