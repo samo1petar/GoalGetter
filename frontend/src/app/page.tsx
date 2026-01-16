@@ -26,6 +26,9 @@ export default function HomePage() {
           <span className="text-xl font-bold">GoalGetter</span>
         </div>
         <div className="flex items-center gap-4">
+          <Link href="/pricing">
+            <Button variant="ghost">Pricing</Button>
+          </Link>
           <Link href="/login">
             <Button variant="ghost">Sign in</Button>
           </Link>
