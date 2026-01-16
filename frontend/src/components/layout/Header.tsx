@@ -23,6 +23,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
+import { InstructionsDialog } from '@/components/common/InstructionsDialog';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -75,6 +76,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 Meetings
               </Button>
             </Link>
+            <InstructionsDialog />
           </nav>
         </div>
 
