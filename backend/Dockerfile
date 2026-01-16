@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libpq-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
@@ -46,6 +47,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libpq5 \
+    libffi8 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -100,6 +102,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libpq-dev \
+    libffi-dev \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*

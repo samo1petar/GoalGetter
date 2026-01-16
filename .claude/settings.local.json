@@ -15,7 +15,8 @@
       "Bash(chmod:*)",
       "Bash(./api-helper.sh)",
       "Bash(docker exec:*)",
-      "Bash(npx create-next-app@14:*)"
+      "Bash(npx create-next-app@14:*)",
+      "Bash(npm install)"
     ],
     "deny": [],
     "ask": []
