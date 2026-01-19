@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { chatApi } from '@/lib/api/chat';
 import { useChatStore } from '@/stores/chatStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useDraftGoals } from '@/hooks/useDraftGoals';
 import { ChatAccessGate } from './ChatAccessGate';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
@@ -15,6 +16,16 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export function ChatContainer() {
   const { messages, setMessages, connectionStatus } = useChatStore();
   const { sendMessage } = useWebSocket();
+  const { getDraftsArray } = useDraftGoals();
+
+  // Wrap sendMessage to include draft goals
+  const handleSendMessage = useCallback(
+    (content: string) => {
+      const draftGoals = getDraftsArray();
+      sendMessage(content, draftGoals);
+    },
+    [sendMessage, getDraftsArray]
+  );
 
   // Load chat history
   const { data: historyData } = useQuery({
@@ -57,7 +68,7 @@ export function ChatContainer() {
         {/* Input */}
         <div className="p-4 border-t bg-background">
           <ChatInput
-            onSend={sendMessage}
+            onSend={handleSendMessage}
             disabled={connectionStatus !== 'connected'}
           />
         </div>

@@ -7,13 +7,13 @@ import { StreamingMessage } from './StreamingMessage';
 import { TypingIndicator } from './TypingIndicator';
 
 export function MessageList() {
-  const { messages, streamingContent, isTyping } = useChatStore();
+  const { messages, streamingContent, isTyping, isEditingGoal } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, isTyping]);
+  }, [messages, streamingContent, isTyping, isEditingGoal]);
 
   if (messages.length === 0 && !streamingContent && !isTyping) {
     return (
@@ -37,7 +37,9 @@ export function MessageList() {
 
       {streamingContent && <StreamingMessage content={streamingContent} />}
 
-      {isTyping && !streamingContent && <TypingIndicator />}
+      {(isTyping || isEditingGoal) && !streamingContent && (
+        <TypingIndicator isEditingGoal={isEditingGoal} />
+      )}
 
       <div ref={bottomRef} />
     </div>

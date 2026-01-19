@@ -1,0 +1,283 @@
+"""
+Goal Tool Handler for AI Coach.
+Executes goal manipulation tools called by Claude.
+"""
+import logging
+from datetime import datetime
+from typing import Dict, Any, Optional
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from app.models.goal import GoalModel
+
+logger = logging.getLogger(__name__)
+
+
+class GoalToolHandler:
+    """
+    Handles execution of goal-related tools called by the AI Coach.
+    """
+
+    def __init__(self, db: AsyncIOMotorDatabase, user_id: str):
+        """
+        Initialize the tool handler.
+
+        Args:
+            db: MongoDB database instance
+            user_id: The user's ID
+        """
+        self.db = db
+        self.user_id = user_id
+
+    async def execute_tool(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        active_goal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute a goal tool and return the result.
+
+        Args:
+            tool_name: Name of the tool to execute
+            tool_input: Input parameters for the tool
+            active_goal_id: ID of the currently active goal in editor (for 'current' reference)
+
+        Returns:
+            Dict with success status, goal_id, goal data, or error
+        """
+        try:
+            if tool_name == "create_goal":
+                return await self._create_goal(tool_input)
+            elif tool_name == "update_goal":
+                return await self._update_goal(tool_input, active_goal_id)
+            elif tool_name == "set_goal_phase":
+                return await self._set_goal_phase(tool_input, active_goal_id)
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unknown tool: {tool_name}",
+                }
+        except Exception as e:
+            logger.error(f"Error executing tool {tool_name}: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    async def _create_goal(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new goal from tool input."""
+        title = tool_input.get("title", "Untitled Goal")
+        content = tool_input.get("content", "")
+        template_type = tool_input.get("template_type", "custom")
+        deadline = tool_input.get("deadline")
+        milestones = tool_input.get("milestones", [])
+        tags = tool_input.get("tags", [])
+
+        # Format milestones
+        formatted_milestones = []
+        for m in milestones:
+            milestone = {
+                "title": m.get("title", ""),
+                "description": m.get("description", ""),
+                "target_date": m.get("target_date"),
+                "completed": False,
+                "completed_at": None,
+            }
+            formatted_milestones.append(milestone)
+
+        # Create goal document
+        goal_doc = GoalModel.create_goal_document(
+            user_id=self.user_id,
+            title=title,
+            content=content,
+            phase="draft",  # AI-created goals start as drafts
+            template_type=template_type,
+        )
+
+        # Add metadata
+        goal_doc["metadata"]["deadline"] = deadline
+        goal_doc["metadata"]["milestones"] = formatted_milestones
+        goal_doc["metadata"]["tags"] = tags
+
+        # Insert into database
+        result = await self.db.goals.insert_one(goal_doc)
+        goal_doc["_id"] = result.inserted_id
+
+        # Serialize for response
+        serialized_goal = GoalModel.serialize_goal(goal_doc)
+
+        logger.info(f"AI Coach created goal: {serialized_goal['id']} for user {self.user_id}")
+
+        return {
+            "success": True,
+            "goal_id": serialized_goal["id"],
+            "goal": serialized_goal,
+        }
+
+    async def _update_goal(
+        self,
+        tool_input: Dict[str, Any],
+        active_goal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update an existing goal."""
+        goal_id = tool_input.get("goal_id", "")
+
+        # Handle 'current' reference
+        if goal_id == "current":
+            if not active_goal_id:
+                return {
+                    "success": False,
+                    "error": "No active goal in editor to update",
+                }
+            goal_id = active_goal_id
+
+        # Validate goal_id format
+        if not ObjectId.is_valid(goal_id):
+            return {
+                "success": False,
+                "error": f"Invalid goal ID: {goal_id}",
+            }
+
+        # Find the goal
+        goal = await self.db.goals.find_one({
+            "_id": ObjectId(goal_id),
+            "user_id": ObjectId(self.user_id),
+        })
+
+        if not goal:
+            return {
+                "success": False,
+                "error": f"Goal not found: {goal_id}",
+            }
+
+        # Build update dict
+        update_fields = {"updated_at": datetime.utcnow()}
+
+        if "title" in tool_input:
+            update_fields["title"] = tool_input["title"]
+
+        if "content" in tool_input:
+            update_fields["content"] = tool_input["content"]
+
+        if "deadline" in tool_input:
+            update_fields["metadata.deadline"] = tool_input["deadline"]
+
+        if "tags" in tool_input:
+            update_fields["metadata.tags"] = tool_input["tags"]
+
+        # Handle milestones
+        if "milestones" in tool_input:
+            # Replace all milestones
+            formatted_milestones = []
+            for m in tool_input["milestones"]:
+                milestone = {
+                    "title": m.get("title", ""),
+                    "description": m.get("description", ""),
+                    "target_date": m.get("target_date"),
+                    "completed": m.get("completed", False),
+                    "completed_at": None,
+                }
+                formatted_milestones.append(milestone)
+            update_fields["metadata.milestones"] = formatted_milestones
+
+        elif "add_milestone" in tool_input:
+            # Add a single milestone
+            new_milestone = {
+                "title": tool_input["add_milestone"].get("title", ""),
+                "description": tool_input["add_milestone"].get("description", ""),
+                "target_date": tool_input["add_milestone"].get("target_date"),
+                "completed": False,
+                "completed_at": None,
+            }
+            await self.db.goals.update_one(
+                {"_id": ObjectId(goal_id)},
+                {"$push": {"metadata.milestones": new_milestone}}
+            )
+
+        # Apply updates
+        if update_fields:
+            await self.db.goals.update_one(
+                {"_id": ObjectId(goal_id)},
+                {"$set": update_fields}
+            )
+
+        # Fetch updated goal
+        updated_goal = await self.db.goals.find_one({"_id": ObjectId(goal_id)})
+        serialized_goal = GoalModel.serialize_goal(updated_goal)
+
+        logger.info(f"AI Coach updated goal: {goal_id} for user {self.user_id}")
+
+        return {
+            "success": True,
+            "goal_id": goal_id,
+            "goal": serialized_goal,
+        }
+
+    async def _set_goal_phase(
+        self,
+        tool_input: Dict[str, Any],
+        active_goal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Change a goal's phase."""
+        goal_id = tool_input.get("goal_id", "")
+        new_phase = tool_input.get("phase", "")
+
+        # Validate phase
+        valid_phases = ["draft", "active", "completed", "archived"]
+        if new_phase not in valid_phases:
+            return {
+                "success": False,
+                "error": f"Invalid phase: {new_phase}. Must be one of: {valid_phases}",
+            }
+
+        # Handle 'current' reference
+        if goal_id == "current":
+            if not active_goal_id:
+                return {
+                    "success": False,
+                    "error": "No active goal in editor to update",
+                }
+            goal_id = active_goal_id
+
+        # Validate goal_id format
+        if not ObjectId.is_valid(goal_id):
+            return {
+                "success": False,
+                "error": f"Invalid goal ID: {goal_id}",
+            }
+
+        # Find the goal
+        goal = await self.db.goals.find_one({
+            "_id": ObjectId(goal_id),
+            "user_id": ObjectId(self.user_id),
+        })
+
+        if not goal:
+            return {
+                "success": False,
+                "error": f"Goal not found: {goal_id}",
+            }
+
+        # Update phase
+        update_fields = {
+            "phase": new_phase,
+            "updated_at": datetime.utcnow(),
+        }
+
+        await self.db.goals.update_one(
+            {"_id": ObjectId(goal_id)},
+            {"$set": update_fields}
+        )
+
+        # Fetch updated goal
+        updated_goal = await self.db.goals.find_one({"_id": ObjectId(goal_id)})
+        serialized_goal = GoalModel.serialize_goal(updated_goal)
+
+        logger.info(f"AI Coach changed goal {goal_id} phase to {new_phase} for user {self.user_id}")
+
+        return {
+            "success": True,
+            "goal_id": goal_id,
+            "goal": serialized_goal,
+        }

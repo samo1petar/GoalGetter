@@ -7,6 +7,7 @@ interface ChatState {
   messages: ChatMessage[];
   streamingContent: string;
   isTyping: boolean;
+  isEditingGoal: boolean;
   connectionStatus: ConnectionStatus;
   error: string | null;
 
@@ -16,6 +17,7 @@ interface ChatState {
   setStreamingContent: (content: string) => void;
   appendStreamingContent: (content: string) => void;
   setTyping: (isTyping: boolean) => void;
+  setEditingGoal: (isEditingGoal: boolean) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setError: (error: string | null) => void;
 }
@@ -24,6 +26,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   streamingContent: '',
   isTyping: false,
+  isEditingGoal: false,
   connectionStatus: 'disconnected',
   error: null,
 
@@ -45,6 +48,8 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
 
   setTyping: (isTyping) => set({ isTyping }),
+
+  setEditingGoal: (isEditingGoal) => set({ isEditingGoal }),
 
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
 

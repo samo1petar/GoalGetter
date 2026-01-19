@@ -97,13 +97,155 @@ Phase 1: Goal Setting - User defines and refines his/hers goals. This is where u
 Phase 2: Tracking - Once users goals are set, user moves to tracking mode where he/she monitors progress, checks off milestones, and have regular check-in meetings with the AI coach to stay accountable.
 Users start in goal setting and transition to tracking once they're ready to execute on their plans.
 
+GOAL EDITING TOOLS:
+You have tools to help users create and refine their goals directly:
+
+- **create_goal**: Use when the user describes a new goal they want to achieve. Create well-structured goals using the appropriate template (SMART, OKR, or custom).
+- **update_goal**: Use to refine or expand existing goals. You can add milestones, update deadlines, or improve the goal description.
+- **set_goal_phase**: Use to activate draft goals or mark goals as complete when the user indicates they're ready.
+
+Guidelines for using tools:
+1. Always explain what you're doing before/after using a tool
+2. Ask for confirmation before making major changes to existing goals
+3. Use SMART criteria when creating goals unless the user prefers OKR
+4. Break down large goals into meaningful milestones
+5. Don't overwrite user's work without asking - prefer adding to existing content
+6. When the user is discussing goals casually, help them refine their thinking before creating a goal
+
 CURRENT CONTEXT:
 User Phase: {user_phase}
 
-Current Goals:
+Saved Goals:
 {user_goals}
 
+Draft Goals (Work in Progress):
+{draft_goals}
+
 Remember: Your job is to be their champion, their challenger, and their accountability partner. Push them to be their best while supporting them every step of the way."""
+
+
+# Tool definitions for Claude
+GOAL_TOOLS = [
+    {
+        "name": "create_goal",
+        "description": "Create a new goal for the user. Use this when the user expresses a new goal they want to achieve. The goal will appear in their goal editor.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "A clear, concise title for the goal (max 100 characters)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Detailed goal description in markdown format. Include specific details, success criteria, and action steps."
+                },
+                "template_type": {
+                    "type": "string",
+                    "enum": ["smart", "okr", "custom"],
+                    "description": "The goal framework to use. Use 'smart' for SMART goals, 'okr' for OKR framework, or 'custom' for free-form."
+                },
+                "deadline": {
+                    "type": "string",
+                    "description": "Target completion date in ISO 8601 format (YYYY-MM-DD). Optional but recommended."
+                },
+                "milestones": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Milestone title"},
+                            "description": {"type": "string", "description": "Brief description of the milestone"},
+                            "target_date": {"type": "string", "description": "Target date for milestone (YYYY-MM-DD)"}
+                        },
+                        "required": ["title"]
+                    },
+                    "description": "List of milestones to track progress toward the goal"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags to categorize the goal (e.g., 'health', 'career', 'personal')"
+                }
+            },
+            "required": ["title", "content"]
+        }
+    },
+    {
+        "name": "update_goal",
+        "description": "Update an existing goal. Use this to refine, expand, or modify a goal the user is working on.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {
+                    "type": "string",
+                    "description": "ID of the goal to update. Use 'current' to update the goal currently open in the editor."
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Updated title (optional, only if changing)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Updated content in markdown. This replaces the existing content."
+                },
+                "deadline": {
+                    "type": "string",
+                    "description": "Updated deadline in ISO 8601 format (YYYY-MM-DD)"
+                },
+                "milestones": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "description": {"type": "string"},
+                            "target_date": {"type": "string"},
+                            "completed": {"type": "boolean"}
+                        },
+                        "required": ["title"]
+                    },
+                    "description": "Replace all milestones with this list"
+                },
+                "add_milestone": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "target_date": {"type": "string"}
+                    },
+                    "required": ["title"],
+                    "description": "Add a single milestone without replacing existing ones"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Updated tags list"
+                }
+            },
+            "required": ["goal_id"]
+        }
+    },
+    {
+        "name": "set_goal_phase",
+        "description": "Change a goal's phase. Use to activate a draft goal or mark a goal as complete.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {
+                    "type": "string",
+                    "description": "ID of the goal. Use 'current' for the goal currently open in the editor."
+                },
+                "phase": {
+                    "type": "string",
+                    "enum": ["draft", "active", "completed", "archived"],
+                    "description": "New phase for the goal. Use 'active' to activate a draft, 'completed' to mark done."
+                }
+            },
+            "required": ["goal_id", "phase"]
+        }
+    }
+]
 
 
 class ClaudeService:
@@ -139,31 +281,45 @@ class ClaudeService:
         self,
         user_phase: str = "goal_setting",
         user_goals: Optional[List[Dict[str, Any]]] = None,
+        draft_goals: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
         Build the system prompt with user context injected.
 
         Args:
             user_phase: The user's current phase ("goal_setting" or "tracking")
-            user_goals: List of user's goals with title and content
+            user_goals: List of user's saved goals with title and content
+            draft_goals: List of draft goals currently being edited (unsaved)
 
         Returns:
             Formatted system prompt string
         """
-        # Format goals for context
+        # Format saved goals for context
         if user_goals:
             goals_text = "\n".join([
-                f"- {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')[:10000]}..."
-                if len(goal.get('content', '')) > 10000
-                else f"- {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')}"
+                f"- [{goal.get('id', 'unknown')}] {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')[:5000]}..."
+                if len(goal.get('content', '')) > 5000
+                else f"- [{goal.get('id', 'unknown')}] {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')}"
                 for goal in user_goals[:]
             ])
         else:
             goals_text = "No goals set yet."
 
+        # Format draft goals for context
+        if draft_goals:
+            drafts_text = "\n".join([
+                f"- [{draft.get('id', 'new')}] {draft.get('title', 'Untitled Draft')}: {draft.get('content', 'No content')[:5000]}..."
+                if len(draft.get('content', '')) > 5000
+                else f"- [{draft.get('id', 'new')}] {draft.get('title', 'Untitled Draft')}: {draft.get('content', 'No content')}"
+                for draft in draft_goals
+            ])
+        else:
+            drafts_text = "No drafts in progress."
+
         return TONY_ROBBINS_SYSTEM_PROMPT.format(
             user_phase=user_phase,
             user_goals=goals_text,
+            draft_goals=drafts_text,
         )
 
     async def send_message(
@@ -248,18 +404,22 @@ class ClaudeService:
         conversation_history: Optional[List[Dict[str, str]]] = None,
         user_phase: str = "goal_setting",
         user_goals: Optional[List[Dict[str, Any]]] = None,
+        draft_goals: Optional[List[Dict[str, Any]]] = None,
+        use_tools: bool = True,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Stream a message response from Claude.
+        Stream a message response from Claude with optional tool support.
 
         Args:
             message: The user's message
             conversation_history: Previous messages in the conversation
             user_phase: The user's current phase
-            user_goals: The user's current goals
+            user_goals: The user's saved goals
+            draft_goals: The user's draft goals (unsaved editor content)
+            use_tools: Whether to enable goal editing tools
 
         Yields:
-            Dict with chunk content and metadata
+            Dict with chunk content, tool calls, and metadata
         """
         if not self.is_configured:
             yield {
@@ -280,27 +440,79 @@ class ClaudeService:
             messages.append({"role": "user", "content": message})
 
             # Build system prompt with context
-            system_prompt = self._build_system_prompt(user_phase, user_goals)
+            system_prompt = self._build_system_prompt(user_phase, user_goals, draft_goals)
 
             # Log the request
             log_claude_request(system_prompt, messages, self.model, self.max_tokens, self.temperature)
 
+            # Prepare API call parameters
+            api_params = {
+                "model": self.model,
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+                "system": system_prompt,
+                "messages": messages,
+            }
+
+            # Add tools if enabled
+            if use_tools:
+                api_params["tools"] = GOAL_TOOLS
+
             # Stream from Claude API
-            async with client.messages.stream(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=system_prompt,
-                messages=messages,
-            ) as stream:
+            async with client.messages.stream(**api_params) as stream:
                 full_content = ""
-                async for text in stream.text_stream:
-                    full_content += text
-                    yield {
-                        "type": "chunk",
-                        "content": text,
-                        "is_complete": False,
-                    }
+                current_tool_use = None
+                tool_input_json = ""
+
+                async for event in stream:
+                    # Handle different event types
+                    if hasattr(event, 'type'):
+                        if event.type == 'content_block_start':
+                            if hasattr(event, 'content_block'):
+                                block = event.content_block
+                                if hasattr(block, 'type') and block.type == 'tool_use':
+                                    # Starting a tool call
+                                    current_tool_use = {
+                                        "id": block.id,
+                                        "name": block.name,
+                                    }
+                                    tool_input_json = ""
+                                    logger.info(f"Tool call started: {block.name}")
+
+                        elif event.type == 'content_block_delta':
+                            if hasattr(event, 'delta'):
+                                delta = event.delta
+                                if hasattr(delta, 'type'):
+                                    if delta.type == 'text_delta' and hasattr(delta, 'text'):
+                                        full_content += delta.text
+                                        yield {
+                                            "type": "chunk",
+                                            "content": delta.text,
+                                            "is_complete": False,
+                                        }
+                                    elif delta.type == 'input_json_delta' and hasattr(delta, 'partial_json'):
+                                        tool_input_json += delta.partial_json
+
+                        elif event.type == 'content_block_stop':
+                            if current_tool_use:
+                                # Tool call complete, parse the input
+                                try:
+                                    tool_input = json.loads(tool_input_json) if tool_input_json else {}
+                                except json.JSONDecodeError:
+                                    logger.error(f"Failed to parse tool input: {tool_input_json}")
+                                    tool_input = {}
+
+                                logger.info(f"Tool call complete: {current_tool_use['name']} with input: {tool_input}")
+
+                                yield {
+                                    "type": "tool_call",
+                                    "tool_name": current_tool_use["name"],
+                                    "tool_id": current_tool_use["id"],
+                                    "tool_input": tool_input,
+                                    "is_complete": False,
+                                }
+                                current_tool_use = None
+                                tool_input_json = ""
 
                 # Get final message for usage stats
                 final_message = await stream.get_final_message()

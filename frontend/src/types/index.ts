@@ -124,8 +124,24 @@ export interface ChatAccessResponse {
   meeting_id?: string;
 }
 
+// Tool call result from AI Coach
+export interface ToolCallResult {
+  success: boolean;
+  goal_id?: string;
+  goal?: Goal;
+  error?: string;
+}
+
+// Draft goal payload sent with chat messages
+export interface DraftGoalPayload {
+  id?: string;
+  title: string;
+  content: string;
+  template_type: string;
+}
+
 export interface WebSocketMessage {
-  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong';
+  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong' | 'tool_call';
   content?: string;
   message_id?: string;
   is_complete?: boolean;
@@ -133,6 +149,9 @@ export interface WebSocketMessage {
   user_phase?: string;
   meeting_id?: string;
   tokens_used?: number;
+  // Tool call fields
+  tool?: 'create_goal' | 'update_goal' | 'set_goal_phase';
+  tool_result?: ToolCallResult;
 }
 
 // Meeting types

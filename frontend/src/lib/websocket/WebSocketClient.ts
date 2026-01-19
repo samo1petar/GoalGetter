@@ -1,7 +1,11 @@
-import type { WebSocketMessage } from '@/types';
+import type { WebSocketMessage, DraftGoalPayload } from '@/types';
 
 type MessageHandler = (data: WebSocketMessage) => void;
 type ConnectionHandler = () => void;
+
+export interface SendMessageOptions {
+  draftGoals?: DraftGoalPayload[];
+}
 
 export class WebSocketClient {
   private url: string;
@@ -65,18 +69,23 @@ export class WebSocketClient {
     }
   }
 
-  sendMessage(content: string): void {
+  sendMessage(content: string, options?: SendMessageOptions): void {
     if (!this.isConnected) {
       console.error('WebSocket not connected');
       return;
     }
 
-    this.ws?.send(
-      JSON.stringify({
-        type: 'message',
-        content,
-      })
-    );
+    const payload: Record<string, unknown> = {
+      type: 'message',
+      content,
+    };
+
+    // Include draft goals if provided
+    if (options?.draftGoals && options.draftGoals.length > 0) {
+      payload.draft_goals = options.draftGoals;
+    }
+
+    this.ws?.send(JSON.stringify(payload));
   }
 
   onMessage(handler: MessageHandler): () => void {

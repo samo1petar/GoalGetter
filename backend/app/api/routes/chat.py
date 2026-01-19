@@ -17,6 +17,7 @@ from app.core.database import get_database
 from app.core.security import SecurityUtils, get_current_active_user
 from app.core.websocket_manager import connection_manager, get_connection_manager
 from app.services.claude_service import claude_service, get_claude_service
+from app.services.goal_tool_handler import GoalToolHandler
 from app.models.message import MessageModel
 from app.models.goal import GoalModel
 from app.schemas.chat import (
@@ -405,6 +406,10 @@ async def websocket_chat_endpoint(
                         })
                         continue
 
+                    # Parse draft goals from message
+                    draft_goals = data.get("draft_goals", [])
+                    active_goal_id = data.get("active_goal_id")
+
                     # Save user message
                     user_message_doc = MessageModel.create_message_document(
                         user_id=user_id,
@@ -424,6 +429,9 @@ async def websocket_chat_endpoint(
                     # Get conversation history for context
                     history = await get_conversation_history(user_id, db, limit=10, meeting_id=meeting_id)
 
+                    # Initialize tool handler for this session
+                    tool_handler = GoalToolHandler(db, user_id)
+
                     # Stream response from Claude
                     full_response = ""
                     tokens_used = 0
@@ -435,6 +443,8 @@ async def websocket_chat_endpoint(
                         conversation_history=history,
                         user_phase=user_phase,
                         user_goals=user_goals,
+                        draft_goals=draft_goals,
+                        use_tools=True,
                     ):
                         if chunk["type"] == "chunk":
                             full_response += chunk["content"]
@@ -443,6 +453,31 @@ async def websocket_chat_endpoint(
                                 "content": chunk["content"],
                                 "is_complete": False,
                             })
+
+                        elif chunk["type"] == "tool_call":
+                            # Execute the tool
+                            tool_name = chunk.get("tool_name")
+                            tool_input = chunk.get("tool_input", {})
+
+                            logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
+
+                            # Execute tool and get result
+                            tool_result = await tool_handler.execute_tool(
+                                tool_name=tool_name,
+                                tool_input=tool_input,
+                                active_goal_id=active_goal_id,
+                            )
+
+                            # Send tool result to frontend
+                            await websocket.send_json({
+                                "type": "tool_call",
+                                "tool": tool_name,
+                                "tool_result": tool_result,
+                            })
+
+                            # Refresh user goals after tool execution
+                            if tool_result.get("success"):
+                                user_goals = await get_user_goals(user_id, db)
 
                         elif chunk["type"] == "complete":
                             tokens_used = chunk.get("tokens_used", 0)
