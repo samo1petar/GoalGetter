@@ -321,6 +321,69 @@ docker-compose -f docker-compose.prod.yml up -d
 - Input validation with Pydantic
 - Request ID tracking
 
+## Debugging & Logs
+
+### Docker Compose Log Commands
+
+```bash
+# View all backend logs
+docker compose logs backend
+
+# Follow logs in real-time (live tail)
+docker compose logs -f backend
+
+# View last N lines
+docker compose logs backend --tail=100
+
+# View logs since a specific time
+docker compose logs backend --since="2024-01-01T10:00:00"
+
+# View logs from last N minutes
+docker compose logs backend --since=30m
+
+# Filter for errors only
+docker compose logs backend 2>&1 | grep -i error
+
+# Filter for Claude/AI related logs
+docker compose logs backend 2>&1 | grep -i -E "claude|anthropic|tool"
+
+# Filter for WebSocket activity
+docker compose logs backend 2>&1 | grep -i websocket
+
+# View all services logs
+docker compose logs
+
+# View specific service with timestamps
+docker compose logs -t backend
+
+# Save logs to file
+docker compose logs backend > backend.log 2>&1
+```
+
+### Useful Log Filters
+
+| Command | Purpose |
+|---------|---------|
+| `docker compose logs -f backend` | Real-time log streaming |
+| `docker compose logs backend --tail=50` | Last 50 lines |
+| `... \| grep -i error` | Filter errors |
+| `... \| grep -i "CLAUDE API"` | AI request/response logs |
+| `... \| grep -i "level.*ERROR"` | JSON error logs |
+| `... \| jq '.'` | Pretty-print JSON logs |
+
+### Debug Mode
+
+The backend has debug logging for Claude API calls that shows:
+- Full system prompt being sent
+- All messages in the conversation
+- Complete response content
+- Token usage
+
+Enable in `backend/app/services/claude_service.py`:
+```python
+anthropic.log = "debug"  # SDK-level debugging
+```
+
 ## Monitoring
 
 - Health check endpoint: `/health`

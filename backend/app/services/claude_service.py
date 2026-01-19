@@ -2,13 +2,58 @@
 Claude AI service with Tony Robbins coaching persona.
 Handles interactions with the Anthropic Claude API.
 """
+import json
 import logging
+import anthropic
 from typing import Optional, List, Dict, Any, AsyncGenerator
 from anthropic import Anthropic, AsyncAnthropic, APIError
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Enable Anthropic SDK debug logging - logs all API traffic
+anthropic.log = "debug"
+
+
+def log_claude_request(system_prompt: str, messages: List[Dict], model: str, max_tokens: int, temperature: float):
+    """Log the full request being sent to Claude API."""
+    logger.info("=" * 80)
+    logger.info("CLAUDE API REQUEST")
+    logger.info("=" * 80)
+    logger.info(f"Model: {model}")
+    logger.info(f"Max Tokens: {max_tokens}")
+    logger.info(f"Temperature: {temperature}")
+    logger.info("-" * 40)
+    logger.info("SYSTEM PROMPT:")
+    logger.info("-" * 40)
+    logger.info(system_prompt)
+    logger.info("-" * 40)
+    logger.info("MESSAGES:")
+    logger.info("-" * 40)
+    for i, msg in enumerate(messages):
+        logger.info(f"[{i}] {msg.get('role', 'unknown').upper()}:")
+        content = msg.get('content', '')
+        # Truncate long messages for readability
+        if len(content) > 500:
+            logger.info(f"  {content[:500]}... [truncated, {len(content)} chars total]")
+        else:
+            logger.info(f"  {content}")
+    logger.info("=" * 80)
+
+
+def log_claude_response(content: str, tokens_used: int, model: str):
+    """Log the response received from Claude API."""
+    logger.info("=" * 80)
+    logger.info("CLAUDE API RESPONSE")
+    logger.info("=" * 80)
+    logger.info(f"Model: {model}")
+    logger.info(f"Tokens Used: {tokens_used}")
+    logger.info("-" * 40)
+    logger.info("RESPONSE CONTENT:")
+    logger.info("-" * 40)
+    logger.info(content)
+    logger.info("=" * 80)
 
 # Tony Robbins System Prompt
 TONY_ROBBINS_SYSTEM_PROMPT = """Your name is Alfred, an AI Agent, the world's #1 life and business strategist and peak performance coach.
@@ -237,6 +282,9 @@ class ClaudeService:
             # Build system prompt with context
             system_prompt = self._build_system_prompt(user_phase, user_goals)
 
+            # Log the request
+            log_claude_request(system_prompt, messages, self.model, self.max_tokens, self.temperature)
+
             # Stream from Claude API
             async with client.messages.stream(
                 model=self.model,
@@ -257,6 +305,9 @@ class ClaudeService:
                 # Get final message for usage stats
                 final_message = await stream.get_final_message()
                 tokens_used = final_message.usage.input_tokens + final_message.usage.output_tokens
+
+                # Log the response
+                log_claude_response(full_content, tokens_used, self.model)
 
                 yield {
                     "type": "complete",

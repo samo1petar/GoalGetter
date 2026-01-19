@@ -59,7 +59,11 @@ class GoalModel:
             "created_at": goal_doc["created_at"].isoformat() if isinstance(goal_doc["created_at"], datetime) else goal_doc["created_at"],
             "updated_at": goal_doc["updated_at"].isoformat() if isinstance(goal_doc["updated_at"], datetime) else goal_doc["updated_at"],
             "metadata": {
-                "deadline": goal_doc.get("metadata", {}).get("deadline").isoformat() if goal_doc.get("metadata", {}).get("deadline") else None,
+                "deadline": (
+                    goal_doc.get("metadata", {}).get("deadline").isoformat()
+                    if isinstance(goal_doc.get("metadata", {}).get("deadline"), datetime)
+                    else goal_doc.get("metadata", {}).get("deadline")
+                ),
                 "milestones": goal_doc.get("metadata", {}).get("milestones", []),
                 "tags": goal_doc.get("metadata", {}).get("tags", []),
             }
