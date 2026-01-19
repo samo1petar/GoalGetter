@@ -2,24 +2,143 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/authStore';
+import { authApi } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Target, Loader2 } from 'lucide-react';
+import { Target, Loader2, Shield, ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
+import type { AuthResponse, TwoFactorRequiredResponse } from '@/types';
+
+function isTwoFactorRequired(response: AuthResponse | TwoFactorRequiredResponse): response is TwoFactorRequiredResponse {
+  return 'requires_2fa' in response && response.requires_2fa === true;
+}
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, isLoggingIn } = useAuth();
+  const router = useRouter();
+  const { setTokens, setUser } = useAuthStore();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login({ email, password });
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await authApi.login({
+        email,
+        password,
+        totp_code: requires2FA ? totpCode : undefined
+      });
+
+      if (isTwoFactorRequired(response)) {
+        // 2FA is required - show the 2FA step
+        setRequires2FA(true);
+        setIsLoading(false);
+        return;
+      }
+
+      // Login successful
+      setTokens(response.access_token, response.refresh_token);
+      setUser(response.user);
+      toast.success('Welcome back!');
+      router.push('/app');
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials');
+      // Reset 2FA code on error so user can try again
+      if (requires2FA) {
+        setTotpCode('');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  const handleBack = () => {
+    setRequires2FA(false);
+    setTotpCode('');
+    setError('');
+  };
+
+  const loginWithGoogle = () => {
+    window.location.href = authApi.getGoogleAuthUrl();
+  };
+
+  // 2FA verification step
+  if (requires2FA) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="p-3 rounded-full bg-primary/10">
+                <Shield className="h-8 w-8 text-primary" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">Two-factor authentication</CardTitle>
+            <CardDescription>
+              Enter the 6-digit code from your authenticator app
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="totpCode">Verification code</Label>
+                <Input
+                  id="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  required
+                  disabled={isLoading}
+                  autoFocus
+                  className="text-center text-2xl tracking-widest"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Or enter a backup code
+                </p>
+              </div>
+              {error && (
+                <p className="text-sm text-destructive text-center">{error}</p>
+              )}
+              <Button type="submit" className="w-full" disabled={isLoading || totpCode.length < 6}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <Button variant="ghost" className="gap-2" onClick={handleBack}>
+              <ArrowLeft className="h-4 w-4" />
+              Back to login
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  // Regular login form
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
@@ -45,11 +164,16 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                disabled={isLoggingIn}
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -57,11 +181,14 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={isLoggingIn}
+                disabled={isLoading}
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoggingIn}>
-              {isLoggingIn ? (
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
@@ -84,7 +211,7 @@ export default function LoginPage() {
             variant="outline"
             className="w-full"
             onClick={loginWithGoogle}
-            disabled={isLoggingIn}
+            disabled={isLoading}
           >
             <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
               <path

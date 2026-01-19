@@ -20,9 +20,10 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Bell, Shield, Trash2, Loader2, Save } from 'lucide-react';
+import { User, Bell, Trash2, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '@/types';
+import { TwoFactorSetup } from '@/components/settings/TwoFactorSetup';
 
 export default function SettingsPage() {
   const { user, updateUser } = useAuthStore();
@@ -92,13 +93,14 @@ export default function SettingsPage() {
     .toUpperCase() || 'U';
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your account preferences</p>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="container mx-auto p-6 max-w-2xl pb-12">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">Settings</h1>
+          <p className="text-muted-foreground">Manage your account preferences</p>
+        </div>
 
-      <div className="space-y-6">
+        <div className="space-y-6">
         {/* Profile Section */}
         <Card>
           <CardHeader>
@@ -217,11 +219,14 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Security Section - 2FA */}
+        <TwoFactorSetup />
+
         {/* Danger Zone */}
         <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
-              <Shield className="h-5 w-5" />
+              <Trash2 className="h-5 w-5" />
               Danger Zone
             </CardTitle>
             <CardDescription>Irreversible account actions</CardDescription>
@@ -249,6 +254,7 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );

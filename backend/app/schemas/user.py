@@ -38,6 +38,7 @@ class UserResponse(UserBase):
     phase: str
     meeting_interval: int
     calendar_connected: bool
+    two_factor_enabled: bool = False
     created_at: str
     updated_at: str
     settings: UserSettings
@@ -88,3 +89,37 @@ class LoginResponse(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Refresh token request schema."""
     refresh_token: str
+
+
+class PasswordResetRequest(BaseModel):
+    """Request password reset schema."""
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    """Confirm password reset with token schema."""
+    token: str
+    new_password: str = Field(..., min_length=8)
+
+
+class Enable2FAResponse(BaseModel):
+    """Response when setting up 2FA."""
+    secret: str
+    qr_code_uri: str
+    backup_codes: list[str]
+
+
+class Verify2FARequest(BaseModel):
+    """Request to verify and enable 2FA."""
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class LoginWith2FARequest(LoginRequest):
+    """Login request with optional 2FA code."""
+    totp_code: Optional[str] = None
+
+
+class TwoFactorRequiredResponse(BaseModel):
+    """Response when 2FA is required during login."""
+    requires_2fa: bool = True
+    message: str = "Two-factor authentication required"

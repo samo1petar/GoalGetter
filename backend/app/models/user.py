@@ -34,6 +34,10 @@ class UserModel:
             "calendar_connected": False,
             "calendar_access_token": None,
             "calendar_refresh_token": None,
+            # Two-factor authentication
+            "two_factor_enabled": False,
+            "two_factor_secret": None,
+            "two_factor_backup_codes": None,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "settings": {
@@ -58,6 +62,7 @@ class UserModel:
             "phase": user_doc["phase"],
             "meeting_interval": user_doc["meeting_interval"],
             "calendar_connected": user_doc.get("calendar_connected", False),
+            "two_factor_enabled": user_doc.get("two_factor_enabled", False),
             "created_at": user_doc["created_at"].isoformat(),
             "updated_at": user_doc["updated_at"].isoformat(),
             "settings": user_doc.get("settings", {}),

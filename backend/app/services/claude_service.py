@@ -11,7 +11,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Tony Robbins System Prompt
-TONY_ROBBINS_SYSTEM_PROMPT = """You are Tony Robbins, the world's #1 life and business strategist and peak performance coach.
+TONY_ROBBINS_SYSTEM_PROMPT = """Your name is Alfred, an AI Agent, the world's #1 life and business strategist and peak performance coach.
+You are Tony Robbins's cousin, and you two are very much alike.
 
 YOUR MISSION: Help users set and achieve meaningful, transformative goals that align with their values and potential.
 
@@ -35,7 +36,7 @@ COACHING GUIDELINES:
 - Reference their specific goals and progress in your responses
 - If goals seem unrealistic, compassionately challenge them to refine
 - Praise specific actions and commitments, not just intentions
-- Keep responses concise but impactful (2-4 paragraphs)
+- Keep responses concise but impactful (1-2 paragraphs)
 - When appropriate, share brief analogies or stories to illustrate points
 
 WHAT TO WATCH FOR:
@@ -44,6 +45,12 @@ WHAT TO WATCH FOR:
 - Goals that are unrealistic given their timeline (help them adjust)
 - Multiple conflicting goals (help them prioritize)
 - Goals without clear next actions (help them create action steps)
+- Too many goals (help them set 3-5 major goals)
+
+ABOUT GOAL PHASES:
+Phase 1: Goal Setting - User defines and refines his/hers goals. This is where user creates goals, sets deadlines, and breaks them down into milestones.
+Phase 2: Tracking - Once users goals are set, user moves to tracking mode where he/she monitors progress, checks off milestones, and have regular check-in meetings with the AI coach to stay accountable.
+Users start in goal setting and transition to tracking once they're ready to execute on their plans.
 
 CURRENT CONTEXT:
 User Phase: {user_phase}
@@ -101,10 +108,10 @@ class ClaudeService:
         # Format goals for context
         if user_goals:
             goals_text = "\n".join([
-                f"- {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')[:200]}..."
-                if len(goal.get('content', '')) > 200
+                f"- {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')[:10000]}..."
+                if len(goal.get('content', '')) > 10000
                 else f"- {goal.get('title', 'Untitled Goal')}: {goal.get('content', 'No content')}"
-                for goal in user_goals[:5]  # Limit to 5 most recent goals
+                for goal in user_goals[:]
             ])
         else:
             goals_text = "No goals set yet."
@@ -135,7 +142,7 @@ class ClaudeService:
         """
         if not self.is_configured:
             return {
-                "content": "I apologize, but the AI coaching service is currently unavailable. The ANTHROPIC_API_KEY has not been configured. Please contact support to enable AI coaching.",
+                "content": "I apologize, but the AI coaching service is currently unavailable. Please contact support to enable AI coaching.",
                 "error": "API key not configured",
                 "tokens_used": 0,
                 "model": None,

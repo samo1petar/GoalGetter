@@ -2,6 +2,7 @@
 Security utilities for authentication and authorization.
 Includes JWT token management and password hashing.
 """
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
@@ -35,7 +36,7 @@ class SecurityUtils:
 
     @staticmethod
     def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-        """Create a JWT access token."""
+        """Create a JWT access token with unique JTI for blacklisting support."""
         to_encode = data.copy()
 
         if expires_delta:
@@ -43,16 +44,20 @@ class SecurityUtils:
         else:
             expire = datetime.utcnow() + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
 
-        to_encode.update({"exp": expire, "type": "access"})
+        # Add unique JTI (JWT ID) for token blacklisting support
+        jti = str(uuid.uuid4())
+        to_encode.update({"exp": expire, "type": "access", "jti": jti})
         encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
         return encoded_jwt
 
     @staticmethod
     def create_refresh_token(data: Dict[str, Any]) -> str:
-        """Create a JWT refresh token."""
+        """Create a JWT refresh token with unique JTI for blacklisting support."""
         to_encode = data.copy()
         expire = datetime.utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
-        to_encode.update({"exp": expire, "type": "refresh"})
+        # Add unique JTI (JWT ID) for token blacklisting support
+        jti = str(uuid.uuid4())
+        to_encode.update({"exp": expire, "type": "refresh", "jti": jti})
         encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
         return encoded_jwt
 
@@ -106,12 +111,22 @@ async def get_current_user(
     # Verify token
     payload = SecurityUtils.verify_token(token, token_type="access")
     user_id: str = payload.get("user_id")
+    jti: str = payload.get("jti")
 
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
+
+    # Check if token is blacklisted (logged out)
+    if jti:
+        from app.core.redis import RedisClient
+        if await RedisClient.is_token_blacklisted(jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+            )
 
     # Get user from database
     from bson import ObjectId

@@ -3,13 +3,14 @@ Authentication API endpoints.
 Handles user registration, login, OAuth, and token management.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.database import get_database
-from app.core.security import get_current_user, get_current_active_user
+from app.core.security import get_current_user, get_current_active_user, security
 from app.services.auth_service import AuthService
 from app.schemas.user import (
     UserCreate,
@@ -17,8 +18,14 @@ from app.schemas.user import (
     LoginResponse,
     RefreshTokenRequest,
     Token,
-    UserResponse
+    UserResponse,
+    PasswordResetRequest,
+    PasswordResetConfirm,
+    Enable2FAResponse,
+    Verify2FARequest,
+    LoginWith2FARequest
 )
+from typing import Union
 
 router = APIRouter()
 
@@ -48,24 +55,25 @@ async def signup(
     return result
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login")
 @limiter.limit("10/minute")  # Strict limit on login attempts
 async def login(
     request: Request,
-    login_data: LoginRequest,
+    login_data: LoginWith2FARequest,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Login with email and password.
+    Login with email and password, with optional 2FA support.
 
     - **email**: User's email address
     - **password**: User's password
+    - **totp_code**: Optional 2FA code (required if 2FA is enabled)
 
-    Returns user info and authentication tokens.
+    Returns user info and authentication tokens, or requires_2fa: true if 2FA is needed.
     Rate limit: 10 requests per minute.
     """
     auth_service = AuthService(db)
-    result = await auth_service.login_user(login_data)
+    result = await auth_service.login_user_with_2fa(login_data, login_data.totp_code)
     return result
 
 
@@ -145,20 +153,33 @@ async def get_current_user_info(
 
 @router.post("/logout")
 async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: dict = Depends(get_current_active_user)
 ):
     """
-    Logout current user.
+    Logout current user by blacklisting their access token.
 
-    Note: Since we're using JWT tokens, true logout would require
-    token blacklisting in Redis. For now, the client should discard tokens.
-
-    TODO: Implement token blacklisting in Redis for secure logout.
+    The token will be added to Redis blacklist with TTL matching the token's
+    remaining lifetime. This ensures the token cannot be reused even if stolen.
     """
-    # TODO: Add token to Redis blacklist with TTL matching token expiration
+    from datetime import datetime
+    from app.core.security import SecurityUtils
+    from app.core.redis import RedisClient
+
+    token = credentials.credentials
+    payload = SecurityUtils.verify_token(token, token_type="access")
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+
+    if jti and exp:
+        # Calculate TTL as remaining token lifetime
+        ttl = int(exp - datetime.utcnow().timestamp())
+        if ttl > 0:
+            await RedisClient.blacklist_token(jti, ttl)
+
     return {
         "message": "Successfully logged out",
-        "detail": "Please discard your access and refresh tokens"
+        "detail": "Your access token has been invalidated"
     }
 
 
@@ -177,3 +198,101 @@ async def verify_token(
         "valid": True,
         "user": current_user
     }
+
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute")  # Strict limit to prevent abuse
+async def forgot_password(
+    request: Request,
+    data: PasswordResetRequest,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Request a password reset email.
+
+    - **email**: Email address to send reset link to
+
+    Always returns success to prevent email enumeration attacks.
+    Rate limit: 3 requests per minute.
+    """
+    auth_service = AuthService(db)
+    await auth_service.request_password_reset(data.email)
+
+    # Always return success to prevent email enumeration
+    return {
+        "message": "If an account exists with this email, you will receive a password reset link."
+    }
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    data: PasswordResetConfirm,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Reset password using token from email.
+
+    - **token**: Reset token from the email link
+    - **new_password**: New password (min 8 characters)
+
+    Rate limit: 5 requests per minute.
+    """
+    auth_service = AuthService(db)
+    await auth_service.confirm_password_reset(data.token, data.new_password)
+
+    return {"message": "Password has been reset successfully. You can now log in."}
+
+
+# Two-Factor Authentication Routes
+
+@router.post("/2fa/setup", response_model=Enable2FAResponse)
+async def setup_2fa(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Setup 2FA for current user.
+
+    Returns secret key, QR code URI, and backup codes.
+    User must verify the setup by providing a valid code.
+    """
+    auth_service = AuthService(db)
+    return await auth_service.setup_2fa(current_user["id"])
+
+
+@router.post("/2fa/verify")
+async def verify_2fa(
+    data: Verify2FARequest,
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Verify and enable 2FA.
+
+    - **code**: 6-digit code from authenticator app
+
+    Call this after setup to confirm 2FA is working.
+    """
+    auth_service = AuthService(db)
+    await auth_service.verify_and_enable_2fa(current_user["id"], data.code)
+    return {"message": "Two-factor authentication enabled successfully"}
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    data: Verify2FARequest,
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Disable 2FA for current user.
+
+    - **code**: 6-digit code from authenticator app or backup code
+
+    Requires valid 2FA code to disable.
+    """
+    auth_service = AuthService(db)
+    await auth_service.disable_2fa(current_user["id"], data.code)
+    return {"message": "Two-factor authentication disabled successfully"}

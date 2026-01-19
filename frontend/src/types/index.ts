@@ -14,6 +14,7 @@ export interface User {
   phase: 'goal_setting' | 'tracking';
   meeting_interval: number;
   calendar_connected: boolean;
+  two_factor_enabled: boolean;
   created_at: string;
   updated_at: string;
   settings: UserSettings;
@@ -25,6 +26,19 @@ export interface AuthResponse {
   token_type: string;
   user: User;
 }
+
+export interface TwoFactorRequiredResponse {
+  requires_2fa: boolean;
+  message: string;
+}
+
+export interface TwoFactorSetupResponse {
+  secret: string;
+  qr_code_uri: string;
+  backup_codes: string[];
+}
+
+export type LoginResponse = AuthResponse | TwoFactorRequiredResponse;
 
 // Goal types
 export interface Milestone {

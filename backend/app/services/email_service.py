@@ -631,6 +631,84 @@ Questions? Contact us at {self.support_email}
 
         return self._send_email(to_email, subject, html_content, text_content)
 
+    def send_password_reset_email(
+        self,
+        to_email: str,
+        user_name: str,
+        reset_token: str,
+    ) -> bool:
+        """
+        Send password reset email with secure link.
+
+        Args:
+            to_email: User's email address
+            user_name: User's name
+            reset_token: Secure token for password reset
+
+        Returns:
+            bool: True if email was sent successfully
+        """
+        reset_url = f"{self.frontend_url}/reset-password?token={reset_token}"
+        subject = f"Reset your {settings.APP_NAME} password"
+
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ padding: 30px; background-color: #f9fafb; border-radius: 0 0 8px 8px; }}
+        .button {{ display: inline-block; padding: 12px 30px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+        .warning {{ background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; }}
+        .footer {{ text-align: center; padding: 20px; color: #666; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Password Reset Request</h1>
+        </div>
+        <div class="content">
+            <h2>Hey {user_name},</h2>
+            <p>We received a request to reset your password. Click the button below to create a new password:</p>
+            <p style="text-align: center;">
+                <a href="{reset_url}" class="button">Reset Password</a>
+            </p>
+            <div class="warning">
+                <strong>Important:</strong> This link will expire in 1 hour. If you didn't request this reset, please ignore this email.
+            </div>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #4F46E5;">{reset_url}</p>
+        </div>
+        <div class="footer">
+            <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
+            <p>Questions? Contact us at {self.support_email}</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+        text_content = f"""
+Password Reset Request
+
+Hey {user_name},
+
+We received a request to reset your password. Visit this link to create a new password:
+
+{reset_url}
+
+This link will expire in 1 hour. If you didn't request this reset, please ignore this email.
+
+---
+{settings.APP_NAME} - AI-Powered Goal Achievement
+Questions? Contact us at {self.support_email}
+"""
+
+        return self._send_email(to_email, subject, html_content, text_content)
+
 
 # Singleton instance
 email_service = EmailService()

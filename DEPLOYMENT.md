@@ -26,9 +26,11 @@ Before deploying, ensure you have:
 - SSL certificates (Let's Encrypt recommended)
 - External service accounts:
   - **Anthropic API key** (required for AI coaching)
-  - **SendGrid API key** (optional, for email notifications)
+  - **SendGrid API key** (required for password reset emails, meeting reminders)
   - **Google OAuth credentials** (optional, for OAuth login)
   - **Sentry DSN** (optional, for error monitoring)
+  - **MongoDB Atlas** (recommended for production database)
+  - **Redis** (required for token blacklisting, OAuth state, rate limiting)
 
 ---
 
@@ -200,15 +202,44 @@ openssl rand -base64 24
 
 ### Option 1: Railway (Recommended for Simplicity)
 
-1. **Push to GitHub**
-2. **Connect Railway to repository**
-3. **Add services:**
-   - MongoDB (Railway plugin)
-   - Redis (Railway plugin)
-4. **Configure environment variables**
-5. **Deploy**
+Both backend and frontend include `railway.toml` configuration files for easy deployment.
 
-Railway automatically detects the Dockerfile and handles deployment.
+1. **Push to GitHub**
+
+2. **Create Railway project and add services:**
+   - **Backend API** - Source: `backend/` directory
+   - **Celery Worker** - Source: `backend/` directory, Start: `celery -A app.tasks.celery_tasks worker --loglevel=info`
+   - **Celery Beat** - Source: `backend/` directory, Start: `celery -A app.tasks.celery_tasks beat --loglevel=info`
+   - **Frontend** - Source: `frontend/` directory
+   - **Redis** - Railway plugin
+   - **MongoDB** - Use MongoDB Atlas (external, free tier available)
+
+3. **Configure environment variables:**
+
+   **Backend Service:**
+   ```bash
+   APP_ENV=production
+   DEBUG=false
+   SECRET_KEY=<generate-with-openssl-rand-hex-32>
+   JWT_SECRET_KEY=<generate-with-openssl-rand-hex-32>
+   MONGODB_URI=<mongodb-atlas-connection-string>
+   REDIS_URL=${{Redis.REDIS_URL}}
+   CELERY_BROKER_URL=${{Redis.REDIS_URL}}
+   ANTHROPIC_API_KEY=<your-key>
+   FRONTEND_URL=https://<frontend-domain>
+   BACKEND_CORS_ORIGINS=https://<frontend-domain>
+   ```
+
+   **Frontend Service:**
+   ```bash
+   NEXT_PUBLIC_API_URL=https://<backend-domain>/api/v1
+   ```
+
+4. **Deploy** - Railway automatically builds and deploys using the Dockerfiles.
+
+5. **Verify deployment:**
+   - Backend health: `https://<backend-domain>/health`
+   - Frontend: `https://<frontend-domain>`
 
 ### Option 2: AWS (ECS/Fargate)
 
@@ -466,6 +497,9 @@ Before going live, ensure:
 - [ ] Firewall rules configured
 - [ ] Environment variables not exposed
 - [ ] API keys rotated from development
+- [ ] Two-factor authentication available for users
+- [ ] Password reset emails configured (SendGrid)
+- [ ] OAuth state validation enabled (Redis required)
 
 ---
 

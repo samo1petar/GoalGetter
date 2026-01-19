@@ -19,7 +19,11 @@
       "Bash(npm install)",
       "Bash(find:*)",
       "Bash(xargs cat:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls:*)",
+      "Bash(/home/alfred/Projects/GoalGetter/start.sh:*)",
+      "Bash(./start.sh)"
     ],
     "deny": [],
     "ask": []

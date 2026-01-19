@@ -77,6 +77,16 @@ class RedisClient:
         client = cls.get_client()
         return await client.exists(key) > 0
 
+    @classmethod
+    async def blacklist_token(cls, token_jti: str, ttl: int):
+        """Add a token JTI to the blacklist with TTL matching token expiration."""
+        await cls.set_cache(f"token_blacklist:{token_jti}", "1", ttl=ttl)
+
+    @classmethod
+    async def is_token_blacklisted(cls, token_jti: str) -> bool:
+        """Check if a token JTI is blacklisted."""
+        return await cls.exists(f"token_blacklist:{token_jti}")
+
 
 # Global Redis client getter
 async def get_redis() -> redis.Redis:

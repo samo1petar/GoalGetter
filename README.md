@@ -26,6 +26,8 @@ GoalGetter features two distinct phases:
 
 - **Split-Screen Interface:** Document editor (left) + Real-time chat with AI coach (right)
 - **OAuth Authentication:** Sign up with Google or email/password
+- **Two-Factor Authentication:** TOTP-based 2FA with backup codes
+- **Password Reset:** Secure email-based password recovery
 - **Real-time Chat:** WebSocket-powered conversation with Claude AI
 - **Meeting Scheduling:** Automated scheduling with calendar sync
 - **Email Notifications:** Reminders for upcoming meetings
@@ -45,11 +47,21 @@ GoalGetter features two distinct phases:
 - **Anthropic Claude** - AI coach with Tony Robbins persona
 - **Celery** - Background task processing
 - **WebSocket** - Real-time communication
+- **PyOTP** - Two-factor authentication
+
+### Frontend
+- **Next.js 14** - React framework with App Router
+- **TypeScript** - Type-safe JavaScript
+- **Tailwind CSS** - Utility-first styling
+- **Zustand** - State management
+- **Radix UI** - Accessible component primitives
+- **BlockNote** - Rich text editor
 
 ### Infrastructure
 - **Docker** - Containerization
 - **MongoDB Atlas** - Managed database (production)
 - **Redis Cloud** - Managed cache (production)
+- **Railway** - Recommended deployment platform
 
 ## Quick Start
 
@@ -117,7 +129,18 @@ GoalGetter/
 │   │   └── main.py          # FastAPI app
 │   ├── tests/               # Pytest tests
 │   ├── Dockerfile           # Multi-stage Docker build
+│   ├── railway.toml         # Railway deployment config
 │   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── app/             # Next.js pages
+│   │   ├── components/      # React components
+│   │   ├── hooks/           # Custom React hooks
+│   │   ├── lib/             # API clients, utilities
+│   │   ├── stores/          # Zustand state stores
+│   │   └── types/           # TypeScript types
+│   ├── Dockerfile           # Multi-stage Docker build
+│   └── railway.toml         # Railway deployment config
 ├── docker-compose.yml       # Development Docker setup
 ├── docker-compose.prod.yml  # Production Docker setup
 ├── DEPLOYMENT.md            # Deployment guide
@@ -135,10 +158,16 @@ Once the server is running, visit:
 
 #### Authentication
 - `POST /api/v1/auth/signup` - Register new user
-- `POST /api/v1/auth/login` - Login with email/password
+- `POST /api/v1/auth/login` - Login with email/password (supports 2FA)
+- `POST /api/v1/auth/logout` - Logout (blacklists token)
 - `POST /api/v1/auth/refresh` - Refresh access token
 - `GET /api/v1/auth/google` - Google OAuth
 - `GET /api/v1/auth/me` - Get current user
+- `POST /api/v1/auth/forgot-password` - Request password reset
+- `POST /api/v1/auth/reset-password` - Reset password with token
+- `POST /api/v1/auth/2fa/setup` - Setup two-factor authentication
+- `POST /api/v1/auth/2fa/verify` - Verify and enable 2FA
+- `POST /api/v1/auth/2fa/disable` - Disable 2FA
 
 #### Goals
 - `GET /api/v1/goals` - List goals (with pagination, filtering)
@@ -281,7 +310,11 @@ docker-compose -f docker-compose.prod.yml up -d
 ## Security Features
 
 - JWT authentication with refresh tokens
+- Token blacklisting for secure logout
+- Two-factor authentication (TOTP) with backup codes
 - Password hashing with bcrypt
+- Secure password reset via email
+- OAuth state validation (CSRF protection)
 - Rate limiting on all endpoints
 - CORS configuration
 - Security headers (X-Frame-Options, X-Content-Type-Options, etc.)

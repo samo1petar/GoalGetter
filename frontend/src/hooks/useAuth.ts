@@ -50,10 +50,19 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: (data: LoginRequest) => authApi.login(data),
     onSuccess: (response) => {
-      setTokens(response.access_token, response.refresh_token);
-      setUser(response.user);
-      toast.success('Welcome back!');
-      router.push('/app');
+      // Check if 2FA is required
+      if ('requires_2fa' in response && response.requires_2fa) {
+        // 2FA required - don't navigate, let the login page handle it
+        toast.info('Two-factor authentication required');
+        return;
+      }
+      // Type guard: response is AuthResponse
+      if ('access_token' in response) {
+        setTokens(response.access_token, response.refresh_token);
+        setUser(response.user);
+        toast.success('Welcome back!');
+        router.push('/app');
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Invalid credentials');
