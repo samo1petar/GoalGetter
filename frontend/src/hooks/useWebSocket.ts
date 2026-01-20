@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useUIStore } from '@/stores/uiStore';
 import { WebSocketClient } from '@/lib/websocket/WebSocketClient';
-import type { WebSocketMessage, DraftGoalPayload } from '@/types';
+import type { WebSocketMessage, DraftGoalPayload, LLMProvider } from '@/types';
 import { toast } from 'sonner';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/api/v1/chat/ws';
@@ -153,7 +153,7 @@ export function useWebSocket() {
   ]);
 
   const sendMessage = useCallback(
-    (content: string, draftGoals?: DraftGoalPayload[]) => {
+    (content: string, draftGoals?: DraftGoalPayload[], provider?: LLMProvider) => {
       if (!wsRef.current?.isConnected) {
         setError('Not connected to chat server');
         return;
@@ -168,7 +168,7 @@ export function useWebSocket() {
         timestamp: new Date().toISOString(),
       });
 
-      wsRef.current.sendMessage(content, { draftGoals });
+      wsRef.current.sendMessage(content, { draftGoals, provider });
     },
     [addMessage, setError]
   );

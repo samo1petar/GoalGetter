@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import SecurityUtils, get_current_active_user
 from app.core.websocket_manager import connection_manager, get_connection_manager
-from app.services.claude_service import claude_service, get_claude_service
+from app.services.llm import LLMServiceFactory, LLMProvider
 from app.services.goal_tool_handler import GoalToolHandler
 from app.models.message import MessageModel
 from app.models.goal import GoalModel
@@ -26,6 +26,10 @@ from app.schemas.chat import (
     MessageResponse,
     ClearHistoryResponse,
     WebSocketMessage,
+    ProviderResponse,
+    AvailableProvidersResponse,
+    ProviderInfo,
+    SetProviderRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -316,6 +320,71 @@ async def clear_chat_history(
     )
 
 
+# Provider Management Endpoints
+
+@router.get("/providers", response_model=AvailableProvidersResponse)
+async def get_available_providers(
+    current_user: dict = Depends(get_current_active_user),
+) -> AvailableProvidersResponse:
+    """
+    Get list of available LLM providers.
+
+    Returns available providers and the user's current preference.
+    """
+    available = LLMServiceFactory.get_available_providers()
+
+    providers = []
+    for provider_id in ["claude", "openai"]:
+        if provider_id == "claude":
+            providers.append(ProviderInfo(
+                id="claude",
+                name="Claude (Anthropic)",
+                description="Claude 3.5 Sonnet - Thoughtful, nuanced responses",
+                available="claude" in available,
+            ))
+        elif provider_id == "openai":
+            providers.append(ProviderInfo(
+                id="openai",
+                name="GPT (OpenAI)",
+                description="GPT-4o - Fast, capable responses with tracing",
+                available="openai" in available,
+            ))
+
+    return AvailableProvidersResponse(
+        providers=providers,
+        current=current_user.get("llm_provider", "claude"),
+    )
+
+
+@router.put("/provider", response_model=ProviderResponse)
+async def set_user_provider(
+    request: SetProviderRequest,
+    current_user: dict = Depends(get_current_active_user),
+    db=Depends(get_database),
+) -> ProviderResponse:
+    """
+    Set user's preferred LLM provider.
+
+    Updates the user's default provider for chat interactions.
+    """
+    provider = request.provider
+    available = LLMServiceFactory.get_available_providers()
+
+    if provider not in available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provider '{provider}' is not available. Available providers: {available}",
+        )
+
+    # Update user's provider preference
+    await db.users.update_one(
+        {"_id": ObjectId(current_user["id"])},
+        {"$set": {"llm_provider": provider}}
+    )
+
+    return ProviderResponse(provider=provider)
+
+
 # WebSocket Endpoint
 
 @router.websocket("/ws")
@@ -432,13 +501,23 @@ async def websocket_chat_endpoint(
                     # Initialize tool handler for this session
                     tool_handler = GoalToolHandler(db, user_id)
 
-                    # Stream response from Claude
+                    # Get the LLM service (uses DEFAULT_LLM_PROVIDER from config)
+                    try:
+                        llm_service = LLMServiceFactory.get_service()
+                    except ValueError as e:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": str(e),
+                        })
+                        continue
+
+                    # Stream response from LLM service
                     full_response = ""
                     tokens_used = 0
                     model_used = None
                     assistant_message_id = None
 
-                    async for chunk in claude_service.stream_message(
+                    async for chunk in llm_service.stream_message(
                         message=content,
                         conversation_history=history,
                         user_phase=user_phase,
@@ -591,8 +670,17 @@ async def send_chat_message(
     user_goals = await get_user_goals(user_id, db)
     history = await get_conversation_history(user_id, db, limit=10, meeting_id=meeting_id)
 
-    # Get response from Claude
-    response = await claude_service.send_message(
+    # Get the LLM service (uses DEFAULT_LLM_PROVIDER from config)
+    try:
+        llm_service = LLMServiceFactory.get_service()
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+
+    # Get response from LLM service
+    response = await llm_service.send_message(
         message=content,
         conversation_history=history,
         user_phase=user_phase,

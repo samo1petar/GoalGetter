@@ -1,10 +1,12 @@
-import type { WebSocketMessage, DraftGoalPayload } from '@/types';
+import type { WebSocketMessage, DraftGoalPayload, LLMProvider } from '@/types';
 
 type MessageHandler = (data: WebSocketMessage) => void;
 type ConnectionHandler = () => void;
 
 export interface SendMessageOptions {
   draftGoals?: DraftGoalPayload[];
+  provider?: LLMProvider;
+  activeGoalId?: string;
 }
 
 export class WebSocketClient {
@@ -83,6 +85,16 @@ export class WebSocketClient {
     // Include draft goals if provided
     if (options?.draftGoals && options.draftGoals.length > 0) {
       payload.draft_goals = options.draftGoals;
+    }
+
+    // Include provider selection if provided
+    if (options?.provider) {
+      payload.provider = options.provider;
+    }
+
+    // Include active goal ID if provided
+    if (options?.activeGoalId) {
+      payload.active_goal_id = options.activeGoalId;
     }
 
     this.ws?.send(JSON.stringify(payload));

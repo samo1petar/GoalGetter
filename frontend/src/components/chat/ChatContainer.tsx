@@ -18,7 +18,7 @@ export function ChatContainer() {
   const { sendMessage } = useWebSocket();
   const { getDraftsArray } = useDraftGoals();
 
-  // Wrap sendMessage to include draft goals
+  // Wrap sendMessage to include draft goals (provider is set server-side via DEFAULT_LLM_PROVIDER)
   const handleSendMessage = useCallback(
     (content: string) => {
       const draftGoals = getDraftsArray();
@@ -54,7 +54,7 @@ export function ChatContainer() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-medium">Tony - AI Coach</h3>
+              <h3 className="font-medium">Alfred - AI Coach</h3>
               <ConnectionStatus status={connectionStatus} />
             </div>
           </div>

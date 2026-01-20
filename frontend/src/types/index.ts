@@ -1,3 +1,18 @@
+// LLM Provider types
+export type LLMProvider = 'claude' | 'openai';
+
+export interface LLMProviderInfo {
+  id: LLMProvider;
+  name: string;
+  description: string;
+  available: boolean;
+}
+
+export interface AvailableProvidersResponse {
+  providers: LLMProviderInfo[];
+  current: LLMProvider;
+}
+
 // User types
 export interface UserSettings {
   meeting_duration: number;
@@ -15,6 +30,7 @@ export interface User {
   meeting_interval: number;
   calendar_connected: boolean;
   two_factor_enabled: boolean;
+  llm_provider: LLMProvider;
   created_at: string;
   updated_at: string;
   settings: UserSettings;
@@ -152,6 +168,15 @@ export interface WebSocketMessage {
   // Tool call fields
   tool?: 'create_goal' | 'update_goal' | 'set_goal_phase';
   tool_result?: ToolCallResult;
+}
+
+// Chat message with provider selection
+export interface ChatMessagePayload {
+  type: 'message';
+  content: string;
+  draft_goals?: DraftGoalPayload[];
+  active_goal_id?: string;
+  provider?: LLMProvider;
 }
 
 // Meeting types

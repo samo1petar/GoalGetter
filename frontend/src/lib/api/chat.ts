@@ -1,10 +1,19 @@
 import { apiClient } from './client';
-import type { ChatHistoryResponse, ChatAccessResponse } from '@/types';
+import type {
+  ChatHistoryResponse,
+  ChatAccessResponse,
+  AvailableProvidersResponse,
+  LLMProvider,
+} from '@/types';
 
 export interface ChatHistoryParams {
   page?: number;
   page_size?: number;
   meeting_id?: string;
+}
+
+export interface ProviderResponse {
+  provider: LLMProvider;
 }
 
 export const chatApi = {
@@ -18,5 +27,13 @@ export const chatApi = {
 
   clearHistory: async (): Promise<void> => {
     return apiClient.delete<void>('/chat/history');
+  },
+
+  getProviders: async (): Promise<AvailableProvidersResponse> => {
+    return apiClient.get<AvailableProvidersResponse>('/chat/providers');
+  },
+
+  setProvider: async (provider: LLMProvider): Promise<ProviderResponse> => {
+    return apiClient.put<ProviderResponse>('/chat/provider', { provider });
   },
 };

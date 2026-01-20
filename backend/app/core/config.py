@@ -57,6 +57,19 @@ class Settings(BaseSettings):
     ANTHROPIC_MAX_TOKENS: int = 4096
     ANTHROPIC_TEMPERATURE: float = 0.7
 
+    # OpenAI API
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 4096
+    OPENAI_TEMPERATURE: float = 0.7
+
+    # LLM Provider Settings
+    DEFAULT_LLM_PROVIDER: str = "openai"
+
+    # OpenAI Tracing
+    OPENAI_TRACING_ENABLED: bool = True
+    OPENAI_TRACING_LOG_PATH: str = "logs/openai_traces.jsonl"
+
     # Google OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None

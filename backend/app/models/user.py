@@ -38,6 +38,8 @@ class UserModel:
             "two_factor_enabled": False,
             "two_factor_secret": None,
             "two_factor_backup_codes": None,
+            # LLM provider preference
+            "llm_provider": "claude",  # Default to Claude
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "settings": {
@@ -63,6 +65,7 @@ class UserModel:
             "meeting_interval": user_doc["meeting_interval"],
             "calendar_connected": user_doc.get("calendar_connected", False),
             "two_factor_enabled": user_doc.get("two_factor_enabled", False),
+            "llm_provider": user_doc.get("llm_provider", "claude"),
             "created_at": user_doc["created_at"].isoformat(),
             "updated_at": user_doc["updated_at"].isoformat(),
             "settings": user_doc.get("settings", {}),

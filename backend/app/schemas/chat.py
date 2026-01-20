@@ -90,3 +90,27 @@ class ClearHistoryResponse(BaseModel):
     success: bool
     deleted_count: int
     message: str
+
+
+class ProviderInfo(BaseModel):
+    """Schema for LLM provider information."""
+    id: str
+    name: str
+    description: str
+    available: bool
+
+
+class AvailableProvidersResponse(BaseModel):
+    """Schema for available providers response."""
+    providers: List[ProviderInfo]
+    current: str
+
+
+class ProviderResponse(BaseModel):
+    """Schema for provider update response."""
+    provider: str
+
+
+class SetProviderRequest(BaseModel):
+    """Schema for setting user's preferred provider."""
+    provider: str = Field(..., pattern="^(claude|openai)$")
