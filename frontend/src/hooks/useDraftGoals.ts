@@ -8,7 +8,8 @@ import { create } from 'zustand';
 export interface DraftGoal {
   id?: string;           // undefined if new goal, set if editing existing
   title: string;
-  content: string;       // Plain text content extracted from editor
+  content: string;       // BlockNote JSON content (serialized)
+  contentMarkdown: string; // Markdown version for AI Coach context
   template_type: 'smart' | 'okr' | 'custom';
 }
 
@@ -18,7 +19,7 @@ export interface DraftGoal {
 export interface DraftGoalPayload {
   id?: string;
   title: string;
-  content: string;
+  content: string;       // Markdown content for AI Coach (not raw JSON)
   template_type: string;
 }
 
@@ -69,7 +70,9 @@ export const useDraftGoalsStore = create<DraftGoalsState>((set, get) => ({
     return Array.from(drafts.values()).map((draft) => ({
       id: draft.id,
       title: draft.title,
-      content: draft.content,
+      // Send Markdown content to backend for AI Coach context
+      // Falls back to raw content if Markdown not available
+      content: draft.contentMarkdown || draft.content,
       template_type: draft.template_type,
     }));
   },

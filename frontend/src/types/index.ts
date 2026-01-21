@@ -65,10 +65,13 @@ export interface Milestone {
   completed_at?: string;
 }
 
+export type ContentFormat = 'markdown' | 'blocknote_json';
+
 export interface GoalMetadata {
   deadline?: string;
   milestones: Milestone[];
   tags: string[];
+  content_format?: ContentFormat;
 }
 
 export interface Goal {

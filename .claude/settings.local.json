@@ -24,7 +24,8 @@
       "Bash(ls:*)",
       "Bash(/home/alfred/Projects/GoalGetter/start.sh:*)",
       "Bash(./start.sh)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,6 +6,7 @@ import { chatApi } from '@/lib/api/chat';
 import { useChatStore } from '@/stores/chatStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDraftGoals } from '@/hooks/useDraftGoals';
+import { useUIStore } from '@/stores/uiStore';
 import { ChatAccessGate } from './ChatAccessGate';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
@@ -16,15 +17,20 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export function ChatContainer() {
   const { messages, setMessages, connectionStatus } = useChatStore();
   const { sendMessage } = useWebSocket();
-  const { getDraftsArray } = useDraftGoals();
+  const { getDraftsArray, activeEditingGoalId } = useDraftGoals();
+  const { activeGoalId } = useUIStore();
 
-  // Wrap sendMessage to include draft goals (provider is set server-side via DEFAULT_LLM_PROVIDER)
+  // Wrap sendMessage to include draft goals with Markdown content and active goal ID
+  // The getDraftsArray() now returns content as Markdown (via contentMarkdown field)
+  // which gives AI Coach better context about goal structure (headers, lists, etc.)
   const handleSendMessage = useCallback(
     (content: string) => {
       const draftGoals = getDraftsArray();
-      sendMessage(content, draftGoals);
+      // Use activeEditingGoalId if available, otherwise fall back to activeGoalId
+      const currentGoalId = activeEditingGoalId || activeGoalId || undefined;
+      sendMessage(content, draftGoals, undefined, currentGoalId);
     },
-    [sendMessage, getDraftsArray]
+    [sendMessage, getDraftsArray, activeEditingGoalId, activeGoalId]
   );
 
   // Load chat history

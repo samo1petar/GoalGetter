@@ -153,7 +153,12 @@ export function useWebSocket() {
   ]);
 
   const sendMessage = useCallback(
-    (content: string, draftGoals?: DraftGoalPayload[], provider?: LLMProvider) => {
+    (
+      content: string,
+      draftGoals?: DraftGoalPayload[],
+      provider?: LLMProvider,
+      activeGoalId?: string
+    ) => {
       if (!wsRef.current?.isConnected) {
         setError('Not connected to chat server');
         return;
@@ -168,7 +173,7 @@ export function useWebSocket() {
         timestamp: new Date().toISOString(),
       });
 
-      wsRef.current.sendMessage(content, { draftGoals, provider });
+      wsRef.current.sendMessage(content, { draftGoals, provider, activeGoalId });
     },
     [addMessage, setError]
   );

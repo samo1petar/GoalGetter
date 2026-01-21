@@ -1,6 +1,12 @@
 """
 Goal Tool Handler for AI Coach.
 Executes goal manipulation tools called by Claude.
+
+Content Format Handling:
+- AI Coach writes goal content as Markdown for rich formatting
+- Frontend GoalEditor converts Markdown to BlockNote blocks for display
+- Content can be stored as Markdown (from AI) or BlockNote JSON (from user edits)
+- The 'content_format' metadata field indicates the format ('markdown' or 'blocknote_json')
 """
 import logging
 from datetime import datetime
@@ -11,6 +17,10 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.goal import GoalModel
 
 logger = logging.getLogger(__name__)
+
+# Content format constants
+CONTENT_FORMAT_MARKDOWN = "markdown"
+CONTENT_FORMAT_BLOCKNOTE = "blocknote_json"
 
 
 class GoalToolHandler:
@@ -66,13 +76,21 @@ class GoalToolHandler:
             }
 
     async def _create_goal(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new goal from tool input."""
+        """Create a new goal from tool input.
+
+        Content Format:
+        - AI Coach provides content as Markdown for rich formatting
+        - Frontend GoalEditor automatically converts Markdown to BlockNote blocks
+        - The content_format field in metadata indicates the format
+        """
         title = tool_input.get("title", "Untitled Goal")
         content = tool_input.get("content", "")
         template_type = tool_input.get("template_type", "custom")
         deadline = tool_input.get("deadline")
         milestones = tool_input.get("milestones", [])
         tags = tool_input.get("tags", [])
+        # Content format hint from tool input, defaults to markdown for AI-created content
+        content_format = tool_input.get("content_format", CONTENT_FORMAT_MARKDOWN)
 
         # Format milestones
         formatted_milestones = []
@@ -95,10 +113,11 @@ class GoalToolHandler:
             template_type=template_type,
         )
 
-        # Add metadata
+        # Add metadata including content format
         goal_doc["metadata"]["deadline"] = deadline
         goal_doc["metadata"]["milestones"] = formatted_milestones
         goal_doc["metadata"]["tags"] = tags
+        goal_doc["metadata"]["content_format"] = content_format
 
         # Insert into database
         result = await self.db.goals.insert_one(goal_doc)
@@ -160,6 +179,9 @@ class GoalToolHandler:
 
         if tool_input.get("content") is not None:
             update_fields["content"] = tool_input["content"]
+            # When AI updates content, mark it as Markdown format
+            content_format = tool_input.get("content_format", CONTENT_FORMAT_MARKDOWN)
+            update_fields["metadata.content_format"] = content_format
 
         if tool_input.get("deadline") is not None:
             update_fields["metadata.deadline"] = tool_input["deadline"]

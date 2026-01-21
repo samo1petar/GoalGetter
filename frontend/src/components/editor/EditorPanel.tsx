@@ -1,9 +1,11 @@
 'use client';
 
+import { useCallback } from 'react';
 import { GoalEditor } from './GoalEditor';
 import { GoalSelector } from './GoalSelector';
 import { useGoal, useGoalMutations } from '@/hooks/useGoals';
 import { useUIStore } from '@/stores/uiStore';
+import { useDraftGoals } from '@/hooks/useDraftGoals';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +30,24 @@ export function EditorPanel() {
   const { activeGoalId, setActiveGoalId } = useUIStore();
   const { data: goal, isLoading } = useGoal(activeGoalId);
   const { updateGoalPhase, deleteGoal, exportGoal } = useGoalMutations();
+  const { setDraft, setActiveEditingGoalId } = useDraftGoals();
+
+  // Handle content changes from the editor - update draft with both JSON and Markdown
+  const handleContentChange = useCallback(
+    (content: string, markdown: string) => {
+      if (goal) {
+        setDraft(goal.id, {
+          id: goal.id,
+          title: goal.title,
+          content: content,
+          contentMarkdown: markdown,
+          template_type: goal.template_type,
+        });
+        setActiveEditingGoalId(goal.id);
+      }
+    },
+    [goal, setDraft, setActiveEditingGoalId]
+  );
 
   const handleExport = () => {
     if (goal) {
@@ -132,6 +152,8 @@ export function EditorPanel() {
                 key={goal.id}
                 goalId={goal.id}
                 initialContent={goal.content}
+                contentFormat={goal.metadata.content_format}
+                onContentChange={handleContentChange}
               />
             </div>
           </div>
