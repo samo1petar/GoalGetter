@@ -110,6 +110,7 @@ export function InstructionsDialog() {
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
 
   const currentStep = selectedStep !== null ? steps[selectedStep] : null;
+  const stepData = currentStep!; // Safe: only used when selectedStep !== null
 
   return (
     <Dialog onOpenChange={(open) => !open && setSelectedStep(null)}>
@@ -177,9 +178,9 @@ export function InstructionsDialog() {
                 </button>
                 <DialogTitle className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <currentStep.icon className="h-4 w-4 text-primary" />
+                    <stepData.icon className="h-4 w-4 text-primary" />
                   </div>
-                  Step {selectedStep + 1}: {currentStep.title}
+                  Step {selectedStep + 1}: {stepData.title}
                 </DialogTitle>
               </div>
               <DialogDescription>
@@ -187,7 +188,7 @@ export function InstructionsDialog() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
-              {currentStep.detailedInstructions.map((instruction, i) => (
+              {stepData.detailedInstructions.map((instruction, i) => (
                 <div key={i} className="text-sm">
                   {instruction.includes('\n') ? (
                     <div className="space-y-2">

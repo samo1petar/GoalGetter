@@ -3,6 +3,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import type { ChatMessage } from '@/types';
 
 interface MessageBubbleProps {
@@ -50,7 +51,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-background border'
         )}
       >
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        {isUser ? (
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <MarkdownRenderer content={message.content} />
+        )}
         <span
           className={cn(
             'text-[10px] mt-1 block',

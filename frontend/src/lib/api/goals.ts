@@ -7,6 +7,8 @@ export interface GoalListParams {
   phase?: string;
   template_type?: string;
   search?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
 }
 
 export interface GoalStatistics {

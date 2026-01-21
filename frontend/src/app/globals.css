@@ -76,3 +76,90 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Markdown content styles */
+.markdown-content {
+  /* First and last element spacing adjustments */
+  & > *:first-child {
+    margin-top: 0;
+  }
+  & > *:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Table styles for GFM tables */
+  & table {
+    @apply w-full border-collapse my-2 text-sm;
+  }
+  & th,
+  & td {
+    @apply border border-border px-3 py-1.5 text-left;
+  }
+  & th {
+    @apply bg-muted font-semibold;
+  }
+  & tr:nth-child(even) {
+    @apply bg-muted/50;
+  }
+
+  /* Task list styles (GFM) */
+  & ul.contains-task-list {
+    @apply list-none pl-0;
+  }
+  & li.task-list-item {
+    @apply flex items-start gap-2;
+  }
+  & input[type="checkbox"] {
+    @apply mt-1;
+  }
+}
+
+/* Syntax highlighting for code blocks - Light theme */
+.hljs {
+  @apply bg-muted text-foreground;
+}
+.hljs-comment,
+.hljs-quote {
+  @apply text-muted-foreground italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: hsl(var(--chart-1));
+}
+.hljs-function .hljs-keyword {
+  color: hsl(var(--chart-1));
+}
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: hsl(var(--chart-2));
+}
+.hljs-number,
+.hljs-deletion {
+  color: hsl(var(--chart-3));
+}
+.hljs-regexp,
+.hljs-meta {
+  color: hsl(var(--chart-4));
+}
+.hljs-built_in,
+.hljs-builtin-name {
+  color: hsl(var(--chart-5));
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: bold;
+}

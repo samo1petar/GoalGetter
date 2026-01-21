@@ -23,7 +23,8 @@
       "Bash(npx tsc:*)",
       "Bash(ls:*)",
       "Bash(/home/alfred/Projects/GoalGetter/start.sh:*)",
-      "Bash(./start.sh)"
+      "Bash(./start.sh)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
