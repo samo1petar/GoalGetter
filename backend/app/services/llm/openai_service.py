@@ -5,11 +5,15 @@ Implements the Tony Robbins coaching persona using OpenAI's GPT models
 with function tool support and built-in tracing for logging.
 """
 import os
+import stat
 import uuid
 import json
 import logging
+import fcntl
+import tempfile
 from datetime import datetime
 from typing import Optional, List, Dict, Any, AsyncGenerator
+from pathlib import Path
 
 from openai import AsyncOpenAI
 
@@ -237,21 +241,92 @@ OPENAI_TOOLS = [
 
 class OpenAITraceLogger:
     """
-    Simple trace logger for OpenAI API calls.
+    Trace logger for OpenAI API calls with robust file handling.
 
     Logs traces to a JSONL file for debugging and monitoring.
+    Features:
+    - File locking for concurrent writes
+    - Proper permission handling
+    - Graceful recovery from permission errors
     """
+
+    # File permissions: owner read/write, group read, others read
+    FILE_PERMISSIONS = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    # Directory permissions: owner rwx, group rx, others rx
+    DIR_PERMISSIONS = stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
 
     def __init__(self, log_path: str):
         """Initialize the trace logger."""
-        self.log_path = log_path
+        self.log_path = Path(log_path).resolve()
+        self._init_success = False
         self._ensure_log_directory()
 
     def _ensure_log_directory(self):
-        """Ensure the log directory exists."""
-        log_dir = os.path.dirname(self.log_path)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
+        """Ensure the log directory exists with proper permissions."""
+        try:
+            log_dir = self.log_path.parent
+            if not log_dir.exists():
+                log_dir.mkdir(parents=True, exist_ok=True)
+                os.chmod(log_dir, self.DIR_PERMISSIONS)
+                logger.info(f"Created log directory: {log_dir}")
+
+            # Create the log file if it doesn't exist
+            if not self.log_path.exists():
+                self.log_path.touch(mode=self.FILE_PERMISSIONS)
+                logger.info(f"Created trace log file: {self.log_path}")
+            else:
+                # Try to fix permissions if file exists but might have wrong permissions
+                try:
+                    os.chmod(self.log_path, self.FILE_PERMISSIONS)
+                except PermissionError:
+                    # Can't change permissions, but may still be able to write
+                    pass
+
+            self._init_success = True
+
+        except PermissionError as e:
+            logger.warning(f"Permission denied creating log directory/file: {e}")
+            self._init_success = False
+        except Exception as e:
+            logger.warning(f"Error initializing trace logger: {e}")
+            self._init_success = False
+
+    def _try_fix_permissions(self) -> bool:
+        """Attempt to fix file permissions. Returns True if successful."""
+        try:
+            log_dir = self.log_path.parent
+
+            # Try to fix directory permissions
+            if log_dir.exists():
+                try:
+                    os.chmod(log_dir, self.DIR_PERMISSIONS)
+                except PermissionError:
+                    pass
+
+            # Try to fix file permissions or recreate file
+            if self.log_path.exists():
+                try:
+                    os.chmod(self.log_path, self.FILE_PERMISSIONS)
+                    return True
+                except PermissionError:
+                    # Try to delete and recreate
+                    try:
+                        self.log_path.unlink()
+                        self.log_path.touch(mode=self.FILE_PERMISSIONS)
+                        return True
+                    except PermissionError:
+                        return False
+            else:
+                # File doesn't exist, try to create it
+                try:
+                    self.log_path.touch(mode=self.FILE_PERMISSIONS)
+                    return True
+                except PermissionError:
+                    return False
+
+        except Exception as e:
+            logger.debug(f"Could not fix permissions: {e}")
+            return False
 
     def log_request(self, trace_id: str, model: str, messages: List[Dict], tools: List[Dict] = None):
         """Log an API request."""
@@ -318,12 +393,94 @@ class OpenAITraceLogger:
         logger.error(f"OpenAI error: trace_id={trace_id}, type={error_type}, error={error}")
 
     def _write_trace(self, trace_data: Dict):
-        """Write trace data to log file."""
+        """
+        Write trace data to log file with file locking and error recovery.
+
+        Uses fcntl for file locking to prevent race conditions during
+        concurrent writes. Attempts recovery on permission errors.
+        """
+        if not self._init_success:
+            # Try to reinitialize if previous init failed
+            self._ensure_log_directory()
+            if not self._init_success:
+                logger.debug("Trace logging disabled due to initialization failure")
+                return
+
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
+            try:
+                # Use atomic write with file locking
+                with open(self.log_path, "a") as f:
+                    # Acquire exclusive lock (blocks until lock is available)
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    try:
+                        f.write(json.dumps(trace_data) + "\n")
+                        f.flush()  # Ensure data is written
+                        os.fsync(f.fileno())  # Force write to disk
+                    finally:
+                        # Release lock
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                return  # Success
+
+            except PermissionError as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(
+                        f"Permission denied writing trace log (attempt {retry_count}/{max_retries}): {e}"
+                    )
+                    # Try to fix permissions before retry
+                    if self._try_fix_permissions():
+                        logger.info("Successfully fixed trace log permissions, retrying...")
+                        continue
+                    else:
+                        # Try writing to a fallback location
+                        fallback_written = self._write_to_fallback(trace_data)
+                        if fallback_written:
+                            return
+                else:
+                    logger.warning(
+                        f"Failed to write trace log after {max_retries} attempts: {e}"
+                    )
+                    # Final attempt: write to fallback
+                    self._write_to_fallback(trace_data)
+
+            except BlockingIOError:
+                # Lock couldn't be acquired immediately, retry
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.warning("Could not acquire file lock for trace log")
+
+            except Exception as e:
+                logger.warning(f"Failed to write trace log: {e}")
+                break
+
+    def _write_to_fallback(self, trace_data: Dict) -> bool:
+        """
+        Write trace data to a fallback location in temp directory.
+        Returns True if successful.
+        """
         try:
-            with open(self.log_path, "a") as f:
-                f.write(json.dumps(trace_data) + "\n")
+            # Use system temp directory as fallback
+            fallback_dir = Path(tempfile.gettempdir()) / "goalgetter_traces"
+            fallback_dir.mkdir(parents=True, exist_ok=True)
+            fallback_file = fallback_dir / "openai_traces.jsonl"
+
+            with open(fallback_file, "a") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(json.dumps(trace_data) + "\n")
+                    f.flush()
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+            logger.info(f"Wrote trace to fallback location: {fallback_file}")
+            return True
+
         except Exception as e:
-            logger.warning(f"Failed to write trace log: {e}")
+            logger.debug(f"Failed to write to fallback location: {e}")
+            return False
 
 
 class OpenAIService(BaseLLMService):

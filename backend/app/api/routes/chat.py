@@ -189,7 +189,22 @@ async def get_user_from_token(token: str, db) -> Optional[Dict[str, Any]]:
 
 # Helper function to get user's goals
 async def get_user_goals(user_id: str, db, limit: int = 5) -> List[Dict[str, Any]]:
-    """Get user's goals for context injection."""
+    """
+    Get user's goals for context injection.
+
+    This function directly queries the database without caching to ensure
+    the AI Coach always has the most up-to-date goal information. This is
+    critical for real-time goal editing scenarios where users may create
+    or modify goals and immediately ask the Coach for help.
+
+    Args:
+        user_id: The user's ID
+        db: Database instance
+        limit: Maximum number of goals to return (default: 5)
+
+    Returns:
+        List of serialized goal dictionaries, sorted by most recently updated
+    """
     cursor = db.goals.find(
         {"user_id": ObjectId(user_id), "phase": {"$ne": "archived"}},
         sort=[("updated_at", -1)],
@@ -474,6 +489,11 @@ async def websocket_chat_endpoint(
                             "next_available": access.get("next_available"),
                         })
                         continue
+
+                    # Always refresh user goals before processing to ensure real-time context
+                    # This ensures AI Coach always has the latest goal data, including
+                    # changes made through the goal editor or other interfaces
+                    user_goals = await get_user_goals(user_id, db)
 
                     # Parse draft goals from message
                     draft_goals = data.get("draft_goals", [])
