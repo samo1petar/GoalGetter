@@ -59,7 +59,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
     volumes:
       - ./backend:/app
-      - backend_logs:/app/logs
+      - ./backend/logs:/app/logs
     depends_on:
       mongodb:
         condition: service_healthy
