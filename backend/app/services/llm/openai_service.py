@@ -4,9 +4,10 @@ OpenAI LLM Service using the OpenAI Agents SDK.
 Implements the Tony Robbins coaching persona using OpenAI's GPT models
 with function tool support and built-in tracing for logging.
 """
+import os
+import uuid
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any, AsyncGenerator
 
@@ -368,7 +369,6 @@ class OpenAIService(BaseLLMService):
 
     def _generate_trace_id(self) -> str:
         """Generate a unique trace ID."""
-        import uuid
         return f"openai-{uuid.uuid4().hex[:12]}"
 
     def get_tools(self) -> List[Dict[str, Any]]:
@@ -460,7 +460,6 @@ class OpenAIService(BaseLLMService):
 
             if conversation_history:
                 messages.extend(conversation_history)
-            messages.append({"role": "user", "content": message})
 
             # Log request
             if self._trace_logger:
@@ -553,7 +552,6 @@ class OpenAIService(BaseLLMService):
 
             if conversation_history:
                 messages.extend(conversation_history)
-            messages.append({"role": "user", "content": message})
 
             # Log request
             if self._trace_logger:
