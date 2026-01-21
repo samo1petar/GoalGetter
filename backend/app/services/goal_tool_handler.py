@@ -154,20 +154,21 @@ class GoalToolHandler:
         # Build update dict
         update_fields = {"updated_at": datetime.utcnow()}
 
-        if "title" in tool_input:
+        # Only update fields that are not None (strict mode sends all fields)
+        if tool_input.get("title") is not None:
             update_fields["title"] = tool_input["title"]
 
-        if "content" in tool_input:
+        if tool_input.get("content") is not None:
             update_fields["content"] = tool_input["content"]
 
-        if "deadline" in tool_input:
+        if tool_input.get("deadline") is not None:
             update_fields["metadata.deadline"] = tool_input["deadline"]
 
-        if "tags" in tool_input:
+        if tool_input.get("tags") is not None:
             update_fields["metadata.tags"] = tool_input["tags"]
 
         # Handle milestones
-        if "milestones" in tool_input:
+        if tool_input.get("milestones") is not None:
             # Replace all milestones
             formatted_milestones = []
             for m in tool_input["milestones"]:
@@ -181,7 +182,7 @@ class GoalToolHandler:
                 formatted_milestones.append(milestone)
             update_fields["metadata.milestones"] = formatted_milestones
 
-        elif "add_milestone" in tool_input:
+        elif tool_input.get("add_milestone") is not None:
             # Add a single milestone
             new_milestone = {
                 "title": tool_input["add_milestone"].get("title", ""),

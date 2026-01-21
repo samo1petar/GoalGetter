@@ -18,6 +18,7 @@ from app.schemas.user import (
     LoginResponse,
     RefreshTokenRequest,
     Token,
+    AccessToken,
     UserResponse,
     PasswordResetRequest,
     PasswordResetConfirm,
@@ -77,7 +78,7 @@ async def login(
     return result
 
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh", response_model=AccessToken)
 @limiter.limit("30/minute")  # More lenient for token refresh
 async def refresh_token(
     request: Request,

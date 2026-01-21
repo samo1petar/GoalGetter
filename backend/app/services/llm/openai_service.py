@@ -461,6 +461,9 @@ class OpenAIService(BaseLLMService):
             if conversation_history:
                 messages.extend(conversation_history)
 
+            # Add current user message
+            messages.append({"role": "user", "content": message})
+
             # Log request
             if self._trace_logger:
                 self._trace_logger.log_request(trace_id, self.model, messages)
@@ -552,6 +555,10 @@ class OpenAIService(BaseLLMService):
 
             if conversation_history:
                 messages.extend(conversation_history)
+
+            # Add current user message if provided
+            if message:
+                messages.append({"role": "user", "content": message})
 
             # Log request
             if self._trace_logger:

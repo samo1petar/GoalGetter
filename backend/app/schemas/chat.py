@@ -15,7 +15,7 @@ class MessageMetadata(BaseModel):
 class MessageBase(BaseModel):
     """Base message schema with common fields."""
     role: str = Field(..., pattern="^(user|assistant)$")
-    content: str = Field(..., min_length=1, max_length=10000)
+    content: str = Field(..., min_length=0, max_length=10000)  # Allow empty for tool calls
 
 
 class MessageCreate(BaseModel):

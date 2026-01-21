@@ -511,94 +511,142 @@ async def websocket_chat_endpoint(
                         })
                         continue
 
-                    # Stream response from LLM service
+                    # Stream response from LLM service with tool call loop
                     full_response = ""
                     tokens_used = 0
                     model_used = None
                     assistant_message_id = None
 
-                    async for chunk in llm_service.stream_message(
-                        message=content,
-                        conversation_history=history,
-                        user_phase=user_phase,
-                        user_goals=user_goals,
-                        draft_goals=draft_goals,
-                        use_tools=True,
-                    ):
-                        if chunk["type"] == "chunk":
-                            full_response += chunk["content"]
-                            await websocket.send_json({
-                                "type": "response_chunk",
-                                "content": chunk["content"],
-                                "is_complete": False,
-                            })
+                    # Build conversation for potential follow-up calls
+                    current_history = list(history) if history else []
+                    current_history.append({"role": "user", "content": content})
 
-                        elif chunk["type"] == "tool_call":
-                            # Execute the tool
-                            tool_name = chunk.get("tool_name")
-                            tool_input = chunk.get("tool_input", {})
+                    max_tool_rounds = 5  # Prevent infinite loops
+                    tool_round = 0
 
-                            logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
+                    while tool_round < max_tool_rounds:
+                        tool_round += 1
+                        tool_calls_this_round = []
+                        tool_results_this_round = []
+                        round_content = ""
 
-                            # Execute tool and get result
-                            tool_result = await tool_handler.execute_tool(
-                                tool_name=tool_name,
-                                tool_input=tool_input,
-                                active_goal_id=active_goal_id,
-                            )
+                        async for chunk in llm_service.stream_message(
+                            message=content if tool_round == 1 else None,
+                            conversation_history=current_history if tool_round > 1 else history,
+                            user_phase=user_phase,
+                            user_goals=user_goals,
+                            draft_goals=draft_goals,
+                            use_tools=True,
+                        ):
+                            if chunk["type"] == "chunk":
+                                round_content += chunk["content"]
+                                full_response += chunk["content"]
+                                await websocket.send_json({
+                                    "type": "response_chunk",
+                                    "content": chunk["content"],
+                                    "is_complete": False,
+                                })
 
-                            # Send tool result to frontend
-                            await websocket.send_json({
-                                "type": "tool_call",
-                                "tool": tool_name,
-                                "tool_result": tool_result,
-                            })
+                            elif chunk["type"] == "tool_call":
+                                # Collect tool call info
+                                tool_name = chunk.get("tool_name")
+                                tool_id = chunk.get("tool_id")
+                                tool_input = chunk.get("tool_input", {})
 
-                            # Refresh user goals after tool execution
-                            if tool_result.get("success"):
-                                user_goals = await get_user_goals(user_id, db)
+                                logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
 
-                        elif chunk["type"] == "complete":
-                            tokens_used = chunk.get("tokens_used", 0)
-                            model_used = chunk.get("model")
+                                # Execute tool and get result
+                                tool_result = await tool_handler.execute_tool(
+                                    tool_name=tool_name,
+                                    tool_input=tool_input,
+                                    active_goal_id=active_goal_id,
+                                )
 
-                            # Save assistant message
-                            assistant_message_doc = MessageModel.create_message_document(
-                                user_id=user_id,
-                                role="assistant",
-                                content=full_response,
-                                meeting_id=meeting_id,
-                                model=model_used,
-                                tokens_used=tokens_used,
-                            )
-                            result = await db.chat_messages.insert_one(assistant_message_doc)
-                            assistant_message_id = str(result.inserted_id)
+                                # Send tool result to frontend
+                                await websocket.send_json({
+                                    "type": "tool_call",
+                                    "tool": tool_name,
+                                    "tool_result": tool_result,
+                                })
 
-                            # Send completion signal
-                            await websocket.send_json({
-                                "type": "response",
-                                "content": full_response,
-                                "message_id": assistant_message_id,
-                                "is_complete": True,
-                                "tokens_used": tokens_used,
-                            })
+                                # Refresh user goals after tool execution
+                                if tool_result.get("success"):
+                                    user_goals = await get_user_goals(user_id, db)
 
-                        elif chunk["type"] == "error":
-                            # Save error response as assistant message
-                            assistant_message_doc = MessageModel.create_message_document(
-                                user_id=user_id,
-                                role="assistant",
-                                content=chunk["content"],
-                                meeting_id=meeting_id,
-                            )
-                            await db.chat_messages.insert_one(assistant_message_doc)
+                                # Store for follow-up call
+                                tool_calls_this_round.append({
+                                    "id": tool_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "arguments": json.dumps(tool_input),
+                                    }
+                                })
+                                tool_results_this_round.append({
+                                    "tool_call_id": tool_id,
+                                    "role": "tool",
+                                    "content": json.dumps(tool_result),
+                                })
 
-                            await websocket.send_json({
-                                "type": "error",
-                                "content": chunk["content"],
-                                "error": chunk.get("error"),
-                                "is_complete": True,
-                            })
+                            elif chunk["type"] == "complete":
+                                tokens_used += chunk.get("tokens_used", 0)
+                                model_used = chunk.get("model")
+
+                            elif chunk["type"] == "error":
+                                # Save error response as assistant message
+                                assistant_message_doc = MessageModel.create_message_document(
+                                    user_id=user_id,
+                                    role="assistant",
+                                    content=chunk["content"],
+                                    meeting_id=meeting_id,
+                                )
+                                await db.chat_messages.insert_one(assistant_message_doc)
+
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "content": chunk["content"],
+                                    "error": chunk.get("error"),
+                                    "is_complete": True,
+                                })
+                                tool_round = max_tool_rounds  # Exit loop on error
+                                break
+
+                        # If no tool calls were made, we're done
+                        if not tool_calls_this_round:
+                            break
+
+                        # Add assistant message with tool calls to history
+                        current_history.append({
+                            "role": "assistant",
+                            "content": round_content or None,
+                            "tool_calls": tool_calls_this_round,
+                        })
+
+                        # Add tool results to history
+                        for tool_result_msg in tool_results_this_round:
+                            current_history.append(tool_result_msg)
+
+                    # Save assistant message
+                    if full_response or tool_round > 1:
+                        assistant_message_doc = MessageModel.create_message_document(
+                            user_id=user_id,
+                            role="assistant",
+                            content=full_response if full_response else "(Goal updated)",
+                            meeting_id=meeting_id,
+                            model=model_used,
+                            tokens_used=tokens_used,
+                        )
+                        result = await db.chat_messages.insert_one(assistant_message_doc)
+                        assistant_message_id = str(result.inserted_id)
+
+                        # Send completion signal
+                        await websocket.send_json({
+                            "type": "response",
+                            "content": full_response if full_response else "(Goal updated)",
+                            "message_id": assistant_message_id,
+                            "is_complete": True,
+                            "tokens_used": tokens_used,
+                        })
 
             except WebSocketDisconnect:
                 logger.info(f"WebSocket disconnected for user {user_id}")

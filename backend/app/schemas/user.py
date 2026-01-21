@@ -65,6 +65,12 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class AccessToken(BaseModel):
+    """Access token only response schema (for refresh endpoint)."""
+    access_token: str
+    token_type: str = "bearer"
+
+
 class TokenData(BaseModel):
     """Token payload data."""
     user_id: str

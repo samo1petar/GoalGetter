@@ -13,6 +13,7 @@ from app.core.security import get_current_active_user
 from app.core.config import settings
 from app.services.goal_service import GoalService
 from app.services.pdf_service import pdf_service
+from app.models.goal import GoalTemplateModel
 from app.schemas.goal import (
     GoalCreate,
     GoalUpdate,
@@ -172,6 +173,19 @@ async def create_goal_from_template(
         template_data=template_data,
     )
     return goal
+
+
+@router.get("/templates")
+async def get_goal_templates(
+    current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Get all available goal templates.
+
+    Returns list of templates (smart, okr, custom) with their structure and fields.
+    """
+    templates = GoalTemplateModel.get_all_templates()
+    return {"templates": templates}
 
 
 @router.get("/{goal_id}", response_model=GoalResponse)
