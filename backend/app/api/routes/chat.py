@@ -408,6 +408,7 @@ async def set_user_provider(
 async def websocket_chat_endpoint(
     websocket: WebSocket,
     token: str = Query(...),
+    is_login: bool = Query(False),
     db=Depends(get_database),
 ):
     """
@@ -454,7 +455,7 @@ async def websocket_chat_endpoint(
 
         # Generate welcome message for the user (first-time or returning)
         welcome_service = get_welcome_service(db)
-        welcome_data = await welcome_service.generate_welcome_message(user_id)
+        welcome_data = await welcome_service.generate_welcome_message(user_id, is_login=is_login)
 
         # Send connected confirmation
         connected_message = {

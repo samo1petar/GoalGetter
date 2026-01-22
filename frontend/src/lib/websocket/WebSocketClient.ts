@@ -20,6 +20,7 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
+  private isFirstConnection = true;
 
   constructor(url: string, token: string) {
     this.url = url;
@@ -33,11 +34,14 @@ export class WebSocketClient {
   connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = `${this.url}?token=${encodeURIComponent(this.token)}`;
+    // Only send is_login=true on first connection, not reconnections
+    const isLogin = this.isFirstConnection;
+    const wsUrl = `${this.url}?token=${encodeURIComponent(this.token)}&is_login=${isLogin}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
+      this.isFirstConnection = false;
       this.startPingInterval();
       this.connectHandlers.forEach((handler) => handler());
     };
