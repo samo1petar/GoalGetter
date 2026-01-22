@@ -22,9 +22,9 @@ class ApiClient {
     return headers;
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(response: Response, skipAuthRefresh = false, isAuthEndpoint = false): Promise<T> {
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && !skipAuthRefresh) {
         // Token expired, try to refresh
         const refreshed = await this.refreshToken();
         if (!refreshed) {
@@ -34,7 +34,11 @@ class ApiClient {
       }
 
       const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
+      // Provide a user-friendly message for auth endpoint 401 errors
+      const fallbackMessage = isAuthEndpoint && response.status === 401
+        ? 'Invalid credentials'
+        : `HTTP ${response.status}`;
+      throw new Error(error.detail || fallbackMessage);
     }
 
     // Handle empty responses
@@ -90,7 +94,9 @@ class ApiClient {
       body: data ? JSON.stringify(data) : undefined,
     });
 
-    return this.handleResponse<T>(response);
+    // Skip auth refresh for login/signup endpoints - 401 there means invalid credentials
+    const isAuthEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/signup');
+    return this.handleResponse<T>(response, isAuthEndpoint, isAuthEndpoint);
   }
 
   async put<T>(endpoint: string, data?: unknown): Promise<T> {
