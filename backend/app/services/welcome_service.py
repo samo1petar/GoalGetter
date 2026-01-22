@@ -377,7 +377,7 @@ FORMAT GUIDELINES:
 Example structure:
 "Welcome back! [brief progress highlight]
 
-**Your Active Goals:**
+**Your Goals:**
 - [Goal 1] (status)
 - [Goal 2] (status)
 
