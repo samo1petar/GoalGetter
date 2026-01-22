@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { GoalEditor } from './GoalEditor';
 import { GoalSelector } from './GoalSelector';
 import { useGoal, useGoalMutations } from '@/hooks/useGoals';
 import { useUIStore } from '@/stores/uiStore';
 import { useDraftGoals } from '@/hooks/useDraftGoals';
+import { useChatStore } from '@/stores/chatStore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,9 +29,39 @@ import {
 
 export function EditorPanel() {
   const { activeGoalId, setActiveGoalId } = useUIStore();
-  const { data: goal, isLoading } = useGoal(activeGoalId);
+  const { data: goalFromQuery, isLoading } = useGoal(activeGoalId);
   const { updateGoalPhase, deleteGoal, exportGoal } = useGoalMutations();
   const { setDraft, setActiveEditingGoalId } = useDraftGoals();
+  const { aiUpdatedGoal, setAiUpdatedGoal } = useChatStore();
+
+  // Use AI-updated goal if it matches the active goal, otherwise use query data
+  // This provides immediate updates when AI Coach modifies a goal
+  const goal = useMemo(() => {
+    if (aiUpdatedGoal && activeGoalId && aiUpdatedGoal.id === activeGoalId) {
+      return aiUpdatedGoal;
+    }
+    return goalFromQuery;
+  }, [aiUpdatedGoal, activeGoalId, goalFromQuery]);
+
+  // Clear AI-updated goal when switching goals or when query data catches up
+  useEffect(() => {
+    if (aiUpdatedGoal && goalFromQuery) {
+      // If query data has caught up (same updated_at), clear the AI-updated goal
+      if (
+        aiUpdatedGoal.id === goalFromQuery.id &&
+        aiUpdatedGoal.updated_at === goalFromQuery.updated_at
+      ) {
+        setAiUpdatedGoal(null);
+      }
+    }
+  }, [aiUpdatedGoal, goalFromQuery, setAiUpdatedGoal]);
+
+  // Clear AI-updated goal when switching to a different goal
+  useEffect(() => {
+    if (aiUpdatedGoal && activeGoalId && aiUpdatedGoal.id !== activeGoalId) {
+      setAiUpdatedGoal(null);
+    }
+  }, [aiUpdatedGoal, activeGoalId, setAiUpdatedGoal]);
 
   // Handle content changes from the editor - update draft with both JSON and Markdown
   const handleContentChange = useCallback(

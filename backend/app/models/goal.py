@@ -66,6 +66,7 @@ class GoalModel:
                 ),
                 "milestones": goal_doc.get("metadata", {}).get("milestones", []),
                 "tags": goal_doc.get("metadata", {}).get("tags", []),
+                "content_format": goal_doc.get("metadata", {}).get("content_format"),
             }
         }
 

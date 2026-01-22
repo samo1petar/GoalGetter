@@ -24,6 +24,7 @@ export function useWebSocket() {
     setWelcomeSummary,
     setHasContext,
     setSessionId,
+    setAiUpdatedGoal,
   } = useChatStore();
   const { setActiveGoalId } = useUIStore();
   const queryClient = useQueryClient();
@@ -99,6 +100,15 @@ export function useWebSocket() {
           setStreamingContent('');
           break;
 
+        case 'focus_goal':
+          // AI Coach is about to modify this goal - switch to it
+          if (data.goal_id) {
+            setActiveGoalId(data.goal_id);
+            // Invalidate goals query to fetch newly created goals
+            queryClient.invalidateQueries({ queryKey: ['goals'] });
+          }
+          break;
+
         case 'tool_call':
           // Handle AI Coach tool calls for goal manipulation
           setEditingGoal(true);
@@ -111,29 +121,50 @@ export function useWebSocket() {
                 if (data.tool_result.goal_id) {
                   setActiveGoalId(data.tool_result.goal_id);
                 }
+                // Set AI-updated goal for immediate editor refresh
+                if (data.tool_result.goal) {
+                  setAiUpdatedGoal(data.tool_result.goal);
+                }
                 toast.success('AI Coach created a new goal');
                 break;
 
-              case 'update_goal':
+              case 'update_goal': {
                 // Invalidate specific goal and goals list
+                // Use predicate to match goal queries regardless of user_id position in key
                 queryClient.invalidateQueries({ queryKey: ['goals'] });
-                if (data.tool_result.goal_id) {
+                const updateGoalId = data.tool_result.goal_id;
+                if (updateGoalId) {
                   queryClient.invalidateQueries({
-                    queryKey: ['goal', data.tool_result.goal_id],
+                    predicate: (query) =>
+                      query.queryKey[0] === 'goal' &&
+                      query.queryKey.includes(updateGoalId),
                   });
+                }
+                // Set AI-updated goal for immediate editor refresh
+                if (data.tool_result.goal) {
+                  setAiUpdatedGoal(data.tool_result.goal);
                 }
                 toast.success('AI Coach updated your goal');
                 break;
+              }
 
-              case 'set_goal_phase':
+              case 'set_goal_phase': {
                 queryClient.invalidateQueries({ queryKey: ['goals'] });
-                if (data.tool_result.goal_id) {
+                const phaseGoalId = data.tool_result.goal_id;
+                if (phaseGoalId) {
                   queryClient.invalidateQueries({
-                    queryKey: ['goal', data.tool_result.goal_id],
+                    predicate: (query) =>
+                      query.queryKey[0] === 'goal' &&
+                      query.queryKey.includes(phaseGoalId),
                   });
+                }
+                // Set AI-updated goal for immediate editor refresh
+                if (data.tool_result.goal) {
+                  setAiUpdatedGoal(data.tool_result.goal);
                 }
                 toast.success('AI Coach updated goal phase');
                 break;
+              }
             }
           } else if (data.tool_result?.error) {
             console.error(`Tool ${data.tool} failed:`, data.tool_result.error);
@@ -180,6 +211,10 @@ export function useWebSocket() {
     setWelcomeSummary,
     setHasContext,
     setSessionId,
+    setActiveGoalId,
+    setAiUpdatedGoal,
+    setEditingGoal,
+    queryClient,
   ]);
 
   const sendMessage = useCallback(

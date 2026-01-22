@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, Goal } from '@/types';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -14,6 +14,8 @@ interface ChatState {
   welcomeSummary: string | null;
   hasContext: boolean;
   sessionId: string | null;
+  // AI-updated goal for immediate editor refresh
+  aiUpdatedGoal: Goal | null;
 
   addMessage: (message: ChatMessage) => void;
   setMessages: (messages: ChatMessage[]) => void;
@@ -29,6 +31,8 @@ interface ChatState {
   setHasContext: (hasContext: boolean) => void;
   setSessionId: (sessionId: string | null) => void;
   clearWelcomeSummary: () => void;
+  // AI-updated goal actions
+  setAiUpdatedGoal: (goal: Goal | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -42,6 +46,8 @@ export const useChatStore = create<ChatState>((set) => ({
   welcomeSummary: null,
   hasContext: false,
   sessionId: null,
+  // AI-updated goal for immediate editor refresh
+  aiUpdatedGoal: null,
 
   addMessage: (message) =>
     set((state) => ({
@@ -76,4 +82,7 @@ export const useChatStore = create<ChatState>((set) => ({
   setSessionId: (sessionId) => set({ sessionId }),
 
   clearWelcomeSummary: () => set({ welcomeSummary: null }),
+
+  // AI-updated goal action - used to immediately push updates to editor
+  setAiUpdatedGoal: (aiUpdatedGoal) => set({ aiUpdatedGoal }),
 }));

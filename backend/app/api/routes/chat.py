@@ -611,12 +611,56 @@ async def websocket_chat_endpoint(
 
                                 logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
 
-                                # Execute tool and get result
-                                tool_result = await tool_handler.execute_tool(
-                                    tool_name=tool_name,
-                                    tool_input=tool_input,
-                                    active_goal_id=active_goal_id,
-                                )
+                                # Handle focus_goal for update_goal and set_goal_phase BEFORE execution
+                                if tool_name in ["update_goal", "set_goal_phase"]:
+                                    goal_id_to_focus = tool_input.get("goal_id")
+                                    # Resolve "current" to actual goal ID
+                                    if goal_id_to_focus == "current":
+                                        goal_id_to_focus = active_goal_id
+
+                                    if goal_id_to_focus:
+                                        await websocket.send_json({
+                                            "type": "focus_goal",
+                                            "goal_id": goal_id_to_focus,
+                                        })
+
+                                # Handle create_goal with two-step process
+                                if tool_name == "create_goal":
+                                    # Step 1: Create minimal goal
+                                    minimal_result = await tool_handler._create_goal_minimal(tool_input)
+
+                                    if minimal_result.get("success"):
+                                        goal_id = minimal_result["goal_id"]
+
+                                        # Step 2: Send focus_goal to switch to the new goal
+                                        await websocket.send_json({
+                                            "type": "focus_goal",
+                                            "goal_id": goal_id,
+                                        })
+
+                                        # Invalidate goals cache so frontend fetches the new goal
+                                        # (handled by frontend on focus_goal)
+
+                                        # Step 3: Populate the goal with full content
+                                        populate_input = {
+                                            "goal_id": goal_id,
+                                            "title": tool_input.get("title"),
+                                            "content": tool_input.get("content"),
+                                            "deadline": tool_input.get("deadline"),
+                                            "milestones": tool_input.get("milestones"),
+                                            "tags": tool_input.get("tags"),
+                                        }
+                                        tool_result = await tool_handler._update_goal(populate_input, goal_id)
+                                        tool_result["goal_id"] = goal_id  # Ensure goal_id is in result
+                                    else:
+                                        tool_result = minimal_result
+                                else:
+                                    # Regular tool execution for update_goal and set_goal_phase
+                                    tool_result = await tool_handler.execute_tool(
+                                        tool_name=tool_name,
+                                        tool_input=tool_input,
+                                        active_goal_id=active_goal_id,
+                                    )
 
                                 # Send tool result to frontend
                                 await websocket.send_json({

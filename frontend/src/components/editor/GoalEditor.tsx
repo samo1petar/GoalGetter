@@ -28,6 +28,10 @@ interface GoalEditorProps {
 export function GoalEditor({ goalId, initialContent, contentFormat, onContentChange }: GoalEditorProps) {
   const { updateGoal } = useGoalMutations();
   const isUpdatingFromExternal = useRef(false);
+  // Track the last content we processed to detect external changes
+  const lastProcessedContent = useRef<string | undefined>(undefined);
+  // Track if this is the initial mount
+  const isInitialMount = useRef(true);
 
   // Determine if content is Markdown based on format hint or content analysis
   const isMarkdownContent = useMemo(() => {
@@ -70,9 +74,12 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
     initialContent: initialBlocks,
   });
 
-  // Convert Markdown initial content after editor is ready
+  // Convert Markdown initial content after editor is ready (only on mount)
   useEffect(() => {
     if (!editor || !initialContent) return;
+    // Only run this on initial mount - subsequent updates are handled by the
+    // external content change detection effect below
+    if (!isInitialMount.current) return;
 
     // Only convert if content is Markdown (based on format hint or auto-detection)
     if (isMarkdownContent) {
@@ -180,8 +187,33 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
     [editor]
   );
 
-  // Expose updateContent method for parent components via ref or callback
-  // For now, we'll handle this through the goal query invalidation flow
+  // Detect external content changes (e.g., from AI Coach updates)
+  // This effect runs when initialContent prop changes after the initial mount
+  useEffect(() => {
+    // Skip the initial mount - content is already set via initialBlocks or the Markdown conversion effect
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      lastProcessedContent.current = initialContent;
+      return;
+    }
+
+    // If content hasn't changed from what we last processed, skip
+    if (initialContent === lastProcessedContent.current) {
+      return;
+    }
+
+    // Content has changed externally (e.g., AI Coach updated the goal)
+    // Update the editor with the new content
+    if (initialContent !== undefined && editor) {
+      console.log('[GoalEditor] External content change detected, updating editor', {
+        hasContentFormat: !!contentFormat,
+        contentLength: initialContent.length,
+        previousLength: lastProcessedContent.current?.length ?? 0,
+      });
+      updateContent(initialContent, contentFormat);
+      lastProcessedContent.current = initialContent;
+    }
+  }, [initialContent, contentFormat, updateContent, editor]);
 
   return (
     <div className="relative h-full">

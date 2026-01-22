@@ -168,7 +168,7 @@ export interface ActiveGoalInfo {
 }
 
 export interface WebSocketMessage {
-  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong' | 'tool_call' | 'welcome';
+  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong' | 'tool_call' | 'welcome' | 'focus_goal';
   content?: string;
   message_id?: string;
   is_complete?: boolean;
@@ -179,6 +179,8 @@ export interface WebSocketMessage {
   // Tool call fields
   tool?: 'create_goal' | 'update_goal' | 'set_goal_phase';
   tool_result?: ToolCallResult;
+  // Focus goal field (for switching to goal before tool execution)
+  goal_id?: string;
   // Session context fields
   session_id?: string;
   has_context?: boolean;

@@ -134,6 +134,29 @@ class GoalToolHandler:
             "goal": serialized_goal,
         }
 
+    async def _create_goal_minimal(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a minimal goal with just title - returns goal_id for focus."""
+        try:
+            title = tool_input.get("title", "New Goal")
+            template_type = tool_input.get("template_type", "custom")
+
+            # Create minimal goal document - content_format will be set
+            # when _update_goal populates the content
+            goal_doc = GoalModel.create_goal_document(
+                user_id=self.user_id,
+                title=title,
+                content="",  # Empty content - will be populated by _update_goal
+                template_type=template_type,
+            )
+
+            result = await self.db.goals.insert_one(goal_doc)
+            goal_id = str(result.inserted_id)
+
+            return {"success": True, "goal_id": goal_id}
+        except Exception as e:
+            logger.error(f"Error creating minimal goal: {e}")
+            return {"success": False, "error": str(e)}
+
     async def _update_goal(
         self,
         tool_input: Dict[str, Any],
