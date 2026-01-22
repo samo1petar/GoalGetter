@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GoalEditor } from './GoalEditor';
 import { GoalSelector } from './GoalSelector';
 import { useGoal, useGoalMutations } from '@/hooks/useGoals';
@@ -25,7 +25,10 @@ import {
   Archive,
   PlayCircle,
   FileText,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
+import type { BlockNoteEditor } from '@blocknote/core';
 
 export function EditorPanel() {
   const { activeGoalId, setActiveGoalId } = useUIStore();
@@ -33,6 +36,7 @@ export function EditorPanel() {
   const { updateGoalPhase, deleteGoal, exportGoal } = useGoalMutations();
   const { setDraft, setActiveEditingGoalId } = useDraftGoals();
   const { aiUpdatedGoal, setAiUpdatedGoal } = useChatStore();
+  const [editor, setEditor] = useState<BlockNoteEditor | null>(null);
 
   // Use AI-updated goal if it matches the active goal, otherwise use query data
   // This provides immediate updates when AI Coach modifies a goal
@@ -120,6 +124,26 @@ export function EditorPanel() {
               {goal.phase}
             </Badge>
           )}
+          {editor && (
+            <div className="flex items-center gap-1 ml-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => editor.undo()}
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => editor.redo()}
+                title="Redo (Ctrl+Y)"
+              >
+                <Redo2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         {goal && (
@@ -185,6 +209,7 @@ export function EditorPanel() {
                 initialContent={goal.content}
                 contentFormat={goal.metadata.content_format}
                 onContentChange={handleContentChange}
+                onEditorReady={setEditor}
               />
             </div>
           </div>

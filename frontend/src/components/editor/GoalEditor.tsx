@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { useCreateBlockNote } from '@blocknote/react';
-import type { PartialBlock, Block } from '@blocknote/core';
+import type { PartialBlock, Block, BlockNoteEditor } from '@blocknote/core';
+import { closeHistory } from 'prosemirror-history';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -23,9 +24,10 @@ interface GoalEditorProps {
   /** Content format hint from goal metadata (set when AI creates/updates content) */
   contentFormat?: ContentFormat;
   onContentChange?: (content: string, markdown: string) => void;
+  onEditorReady?: (editor: BlockNoteEditor) => void;
 }
 
-export function GoalEditor({ goalId, initialContent, contentFormat, onContentChange }: GoalEditorProps) {
+export function GoalEditor({ goalId, initialContent, contentFormat, onContentChange, onEditorReady }: GoalEditorProps) {
   const { updateGoal } = useGoalMutations();
   const isUpdatingFromExternal = useRef(false);
   // Track the last content we processed to detect external changes
@@ -74,7 +76,30 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
     initialContent: initialBlocks,
   });
 
+  // Helper to clear undo history - prevents undoing past initial content
+  const clearUndoHistory = useCallback(() => {
+    if (!editor) return;
+    try {
+      // Access the underlying ProseMirror view via Tiptap
+      const tiptapEditor = (editor as unknown as { _tiptapEditor: { view: { state: { tr: unknown }, dispatch: (tr: unknown) => void } } })._tiptapEditor;
+      if (tiptapEditor?.view) {
+        const { state, dispatch } = tiptapEditor.view;
+        dispatch(closeHistory(state.tr as Parameters<typeof closeHistory>[0]));
+      }
+    } catch (error) {
+      console.warn('Failed to clear undo history:', error);
+    }
+  }, [editor]);
+
+  // Expose editor instance to parent component
+  useEffect(() => {
+    if (editor && onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [editor, onEditorReady]);
+
   // Convert Markdown initial content after editor is ready (only on mount)
+  // Then clear undo history to prevent undoing past initial content
   useEffect(() => {
     if (!editor || !initialContent) return;
     // Only run this on initial mount - subsequent updates are handled by the
@@ -95,7 +120,14 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
         isUpdatingFromExternal.current = false;
       }
     }
-  }, [editor, initialContent, isMarkdownContent]);
+
+    // Clear undo history after initial content is loaded
+    // This prevents users from undoing past the initial goal content
+    // Use setTimeout to ensure the content replacement transaction is complete
+    setTimeout(() => {
+      clearUndoHistory();
+    }, 0);
+  }, [editor, initialContent, isMarkdownContent, clearUndoHistory]);
 
   const { debouncedSave, isSaving } = useAutoSave({
     delay: 2000,
