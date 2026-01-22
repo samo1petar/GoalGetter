@@ -57,7 +57,7 @@ export function ChatContainer() {
             <Avatar>
               <AvatarImage src="/images/coach-avatar.png" />
               <AvatarFallback className="bg-primary text-primary-foreground">
-                TR
+                A
               </AvatarFallback>
             </Avatar>
             <div>

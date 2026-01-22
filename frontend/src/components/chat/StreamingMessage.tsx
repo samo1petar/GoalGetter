@@ -15,7 +15,7 @@ export function StreamingMessage({ content }: StreamingMessageProps) {
       <Avatar className="w-8 h-8 flex-shrink-0">
         <AvatarImage src="/images/coach-avatar.png" />
         <AvatarFallback className="bg-primary text-primary-foreground">
-          TR
+          A
         </AvatarFallback>
       </Avatar>
 

@@ -37,7 +37,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <>
             <AvatarImage src="/images/coach-avatar.png" />
             <AvatarFallback className="bg-primary text-primary-foreground">
-              TR
+              A
             </AvatarFallback>
           </>
         )}
