@@ -85,6 +85,8 @@ export function useAuth() {
     queryClient.removeQueries({ queryKey: ['chat'] });
     queryClient.removeQueries({ queryKey: ['goals'] });
     queryClient.removeQueries({ queryKey: ['goal'] });
+    queryClient.removeQueries({ queryKey: ['meetings'] });
+    queryClient.removeQueries({ queryKey: ['user'] });
     logoutStore();
     router.push('/login');
     toast.success('Logged out successfully');

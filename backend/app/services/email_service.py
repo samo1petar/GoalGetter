@@ -3,8 +3,10 @@ Email service using SendGrid for GoalGetter.
 Handles all email communications including meeting reminders, invitations, and notifications.
 """
 import logging
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+import uuid
+import base64
+from typing import Optional, Dict, Any, List, Tuple
+from datetime import datetime, timedelta
 
 from app.core.config import settings
 
@@ -49,12 +51,80 @@ class EmailService:
 
         return self._sg_client
 
+    def _generate_ics_content(
+        self,
+        meeting_time: datetime,
+        duration_minutes: int,
+        user_email: str,
+        user_name: str,
+        meeting_id: Optional[str] = None,
+    ) -> str:
+        """
+        Generate ICS (iCalendar) content for a meeting invitation.
+
+        Args:
+            meeting_time: Meeting start time (should be UTC)
+            duration_minutes: Meeting duration in minutes
+            user_email: Attendee's email address
+            user_name: Attendee's name
+            meeting_id: Optional meeting ID for UID generation
+
+        Returns:
+            ICS file content as string
+        """
+        # Generate unique ID for the event
+        uid = meeting_id or str(uuid.uuid4())
+
+        # Calculate end time
+        end_time = meeting_time + timedelta(minutes=duration_minutes)
+
+        # Format times for ICS (YYYYMMDDTHHMMSSZ format)
+        def format_ics_time(dt: datetime) -> str:
+            return dt.strftime("%Y%m%dT%H%M%SZ")
+
+        dtstart = format_ics_time(meeting_time)
+        dtend = format_ics_time(end_time)
+        dtstamp = format_ics_time(datetime.utcnow())
+
+        # Build ICS content
+        ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//{settings.APP_NAME}//GoalGetter//EN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:{uid}@goalgetter.app
+DTSTAMP:{dtstamp}
+DTSTART:{dtstart}
+DTEND:{dtend}
+SUMMARY:{settings.APP_NAME} Coaching Session
+DESCRIPTION:Your scheduled coaching session with Alfred, your AI Coach.\\n\\nJoin at: {self.frontend_url}
+LOCATION:{self.frontend_url}
+ORGANIZER;CN={settings.FROM_NAME}:mailto:{self.from_email}
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN={user_name}:mailto:{user_email}
+STATUS:CONFIRMED
+SEQUENCE:0
+BEGIN:VALARM
+TRIGGER:-PT1H
+ACTION:DISPLAY
+DESCRIPTION:Coaching session in 1 hour
+END:VALARM
+BEGIN:VALARM
+TRIGGER:-PT15M
+ACTION:DISPLAY
+DESCRIPTION:Coaching session in 15 minutes
+END:VALARM
+END:VEVENT
+END:VCALENDAR"""
+
+        return ics_content
+
     def _send_email(
         self,
         to_email: str,
         subject: str,
         html_content: str,
         text_content: Optional[str] = None,
+        attachments: Optional[List[Tuple[str, str, str]]] = None,
     ) -> bool:
         """
         Internal method to send an email via SendGrid.
@@ -64,6 +134,7 @@ class EmailService:
             subject: Email subject
             html_content: HTML body content
             text_content: Optional plain text content
+            attachments: Optional list of tuples (filename, content, mime_type)
 
         Returns:
             bool: True if email was sent successfully
@@ -75,7 +146,7 @@ class EmailService:
             return False
 
         try:
-            from sendgrid.helpers.mail import Mail, Email, To, Content
+            from sendgrid.helpers.mail import Mail, Email, To, Content, Attachment, FileContent, FileName, FileType, Disposition
 
             message = Mail(
                 from_email=Email(self.from_email, self.from_name),
@@ -86,6 +157,18 @@ class EmailService:
 
             if text_content:
                 message.add_content(Content("text/plain", text_content))
+
+            # Add attachments if provided
+            if attachments:
+                for filename, content, mime_type in attachments:
+                    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+                    attachment = Attachment(
+                        FileContent(encoded_content),
+                        FileName(filename),
+                        FileType(mime_type),
+                        Disposition('attachment'),
+                    )
+                    message.add_attachment(attachment)
 
             response = self.sg_client.send(message)
 
@@ -139,7 +222,7 @@ class EmailService:
             <p>Welcome aboard! I'm thrilled you've decided to take this journey toward achieving your goals.</p>
             <p>Here's what you can expect:</p>
             <ul>
-                <li><strong>Goal Setting Phase:</strong> Work with your AI coach (yes, it's me - Tony Robbins!) to set powerful, achievable goals</li>
+                <li><strong>Goal Setting Phase:</strong> Work with your AI coach (I'm Alfred, your AI Coach!) to set powerful, achievable goals</li>
                 <li><strong>Unlimited Coaching:</strong> During goal setting, chat with me anytime to refine your goals</li>
                 <li><strong>Tracking Phase:</strong> Once your goals are set, we'll meet regularly to keep you accountable</li>
             </ul>
@@ -148,7 +231,7 @@ class EmailService:
                 <a href="{self.frontend_url}" class="button">Get Started Now</a>
             </p>
             <p>Let's make your dreams a reality!</p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -178,7 +261,7 @@ Get started at: {self.frontend_url}
 Let's make your dreams a reality!
 
 Your Coach,
-Tony (AI Coach)
+Alfred (AI Coach)
 
 ---
 {settings.APP_NAME} - AI-Powered Goal Achievement
@@ -193,15 +276,17 @@ Questions? Contact us at {self.support_email}
         user_name: str,
         meeting_time: datetime,
         duration_minutes: int = 30,
+        meeting_id: Optional[str] = None,
     ) -> bool:
         """
-        Send meeting invitation email.
+        Send meeting invitation email with ICS calendar attachment.
 
         Args:
             to_email: User's email address
             user_name: User's name
-            meeting_time: Scheduled meeting datetime
+            meeting_time: Scheduled meeting datetime (UTC)
             duration_minutes: Meeting duration in minutes
+            meeting_id: Optional meeting ID for calendar event UID
 
         Returns:
             bool: True if email was sent successfully
@@ -235,7 +320,7 @@ Questions? Contact us at {self.support_email}
                 <h3>Coaching Session Details</h3>
                 <p><strong>Date & Time:</strong> {formatted_time}</p>
                 <p><strong>Duration:</strong> {duration_minutes} minutes</p>
-                <p><strong>Coach:</strong> Tony (AI Coach)</p>
+                <p><strong>Coach:</strong> Alfred (AI Coach)</p>
             </div>
             <p>Here's what to prepare:</p>
             <ul>
@@ -248,7 +333,7 @@ Questions? Contact us at {self.support_email}
                 <a href="{self.frontend_url}" class="button">View Your Goals</a>
             </p>
             <p>See you there!</p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -270,7 +355,7 @@ COACHING SESSION DETAILS
 ------------------------
 Date & Time: {formatted_time}
 Duration: {duration_minutes} minutes
-Coach: Tony (AI Coach)
+Coach: Alfred (AI Coach)
 
 Here's what to prepare:
 - Review your current goals
@@ -283,14 +368,27 @@ View your goals at: {self.frontend_url}
 See you there!
 
 Your Coach,
-Tony (AI Coach)
+Alfred (AI Coach)
 
 ---
 {settings.APP_NAME} - AI-Powered Goal Achievement
 Questions? Contact us at {self.support_email}
 """
 
-        return self._send_email(to_email, subject, html_content, text_content)
+        # Generate ICS calendar attachment
+        ics_content = self._generate_ics_content(
+            meeting_time=meeting_time,
+            duration_minutes=duration_minutes,
+            user_email=to_email,
+            user_name=user_name,
+            meeting_id=meeting_id,
+        )
+
+        attachments = [
+            ("coaching-session.ics", ics_content, "text/calendar"),
+        ]
+
+        return self._send_email(to_email, subject, html_content, text_content, attachments)
 
     def send_meeting_reminder(
         self,
@@ -358,7 +456,7 @@ Questions? Contact us at {self.support_email}
                 <a href="{self.frontend_url}" class="button">Join When Ready</a>
             </p>
             <p>Let's make progress!</p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -391,7 +489,7 @@ Join when ready at: {self.frontend_url}
 Let's make progress!
 
 Your Coach,
-Tony (AI Coach)
+Alfred (AI Coach)
 
 ---
 {settings.APP_NAME} - AI-Powered Goal Achievement
@@ -456,7 +554,7 @@ Questions? Contact us at {self.support_email}
                 <a href="{self.frontend_url}" class="button">Continue Your Journey</a>
             </p>
             <p>Proud of you!</p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -488,7 +586,7 @@ Continue your journey at: {self.frontend_url}
 Proud of you!
 
 Your Coach,
-Tony (AI Coach)
+Alfred (AI Coach)
 
 ---
 {settings.APP_NAME} - AI-Powered Goal Achievement
@@ -559,7 +657,7 @@ Questions? Contact us at {self.support_email}
                 <a href="{self.frontend_url}" class="button">View Your Goals</a>
             </p>
             <p>Time to turn those goals into reality!</p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -601,7 +699,7 @@ Questions? Contact us at {self.support_email}
             <p style="text-align: center;">
                 <a href="{self.frontend_url}" class="button">Start Chatting</a>
             </p>
-            <p>Your Coach,<br><strong>Tony (AI Coach)</strong></p>
+            <p>Your Coach,<br><strong>Alfred (AI Coach)</strong></p>
         </div>
         <div class="footer">
             <p>{settings.APP_NAME} - AI-Powered Goal Achievement</p>
@@ -622,7 +720,7 @@ You've transitioned to {new_phase} phase.
 Visit {self.frontend_url} to continue your journey.
 
 Your Coach,
-Tony (AI Coach)
+Alfred (AI Coach)
 
 ---
 {settings.APP_NAME} - AI-Powered Goal Achievement

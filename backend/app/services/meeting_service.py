@@ -18,6 +18,7 @@ from app.schemas.meeting import (
     MeetingUpdate,
     MeetingReschedule,
 )
+from app.services.email_service import get_email_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,74 @@ class MeetingService:
 
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
+        self.email_service = get_email_service()
+
+    async def _send_meeting_invitation(
+        self,
+        user_id: str,
+        meeting_id: str,
+        scheduled_at: datetime,
+        duration_minutes: int,
+    ) -> bool:
+        """
+        Send meeting invitation email with calendar attachment.
+
+        Args:
+            user_id: User's ID
+            meeting_id: Meeting ID for calendar UID
+            scheduled_at: Meeting start time (UTC)
+            duration_minutes: Meeting duration
+
+        Returns:
+            bool: True if email was sent successfully
+        """
+        try:
+            # Get user details
+            user = await self.db.users.find_one({"_id": ObjectId(user_id)})
+            if not user:
+                logger.warning(f"Cannot send meeting invitation: user {user_id} not found")
+                return False
+
+            user_email = user.get("email")
+            user_name = user.get("name", "there")
+
+            if not user_email:
+                logger.warning(f"Cannot send meeting invitation: user {user_id} has no email")
+                return False
+
+            # Send the invitation
+            success = self.email_service.send_meeting_invitation(
+                to_email=user_email,
+                user_name=user_name,
+                meeting_time=scheduled_at,
+                duration_minutes=duration_minutes,
+                meeting_id=meeting_id,
+            )
+
+            if success:
+                logger.info(f"Sent meeting invitation to {user_email} for meeting {meeting_id}")
+            else:
+                logger.warning(f"Failed to send meeting invitation to {user_email}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error sending meeting invitation: {e}")
+            return False
 
     async def create_meeting(
         self,
         user_id: str,
         meeting_data: MeetingCreate,
+        send_invitation: bool = True,
     ) -> Dict[str, Any]:
         """
         Create a new meeting for a user.
+
+        Args:
+            user_id: User's ID
+            meeting_data: Meeting creation data
+            send_invitation: Whether to send calendar invitation email (default: True)
         """
         # Create meeting document
         meeting_doc = MeetingModel.create_meeting_document(
@@ -47,8 +108,18 @@ class MeetingService:
         # Insert into database
         result = await self.db.meetings.insert_one(meeting_doc)
         meeting_doc["_id"] = result.inserted_id
+        meeting_id = str(result.inserted_id)
 
-        logger.info(f"Created meeting {result.inserted_id} for user {user_id}")
+        logger.info(f"Created meeting {meeting_id} for user {user_id}")
+
+        # Send calendar invitation email
+        if send_invitation:
+            await self._send_meeting_invitation(
+                user_id=user_id,
+                meeting_id=meeting_id,
+                scheduled_at=meeting_data.scheduled_at,
+                duration_minutes=meeting_data.duration_minutes,
+            )
 
         return MeetingModel.serialize_meeting(meeting_doc)
 
@@ -93,8 +164,17 @@ class MeetingService:
 
         result = await self.db.meetings.insert_one(meeting_doc)
         meeting_doc["_id"] = result.inserted_id
+        meeting_id = str(result.inserted_id)
 
         logger.info(f"Setup recurring meetings for user {user_id}, first meeting at {first_meeting_time}")
+
+        # Send calendar invitation for the first meeting
+        await self._send_meeting_invitation(
+            user_id=user_id,
+            meeting_id=meeting_id,
+            scheduled_at=first_meeting_time,
+            duration_minutes=setup_data.duration_minutes,
+        )
 
         return MeetingModel.serialize_meeting(meeting_doc)
 
@@ -431,8 +511,17 @@ class MeetingService:
                 duration_minutes=duration_minutes,
             )
 
-            await self.db.meetings.insert_one(next_meeting_doc)
+            next_result = await self.db.meetings.insert_one(next_meeting_doc)
+            next_meeting_id = str(next_result.inserted_id)
             logger.info(f"Created next meeting for user {user_id} at {next_meeting_time}")
+
+            # Send calendar invitation for the next meeting
+            await self._send_meeting_invitation(
+                user_id=user_id,
+                meeting_id=next_meeting_id,
+                scheduled_at=next_meeting_time,
+                duration_minutes=duration_minutes,
+            )
 
         logger.info(f"Completed meeting {meeting_id}")
 
@@ -631,7 +720,16 @@ class MeetingService:
 
         result = await self.db.meetings.insert_one(meeting_doc)
         meeting_doc["_id"] = result.inserted_id
+        meeting_id = str(result.inserted_id)
 
         logger.info(f"Created first meeting for user {user_id} at {first_meeting_time}")
+
+        # Send calendar invitation
+        await self._send_meeting_invitation(
+            user_id=user_id,
+            meeting_id=meeting_id,
+            scheduled_at=first_meeting_time,
+            duration_minutes=duration_minutes,
+        )
 
         return MeetingModel.serialize_meeting(meeting_doc)

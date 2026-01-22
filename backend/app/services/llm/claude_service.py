@@ -106,6 +106,7 @@ You have tools to help users create and refine their goals directly:
 - **create_goal**: Use when the user describes a new goal they want to achieve. Create well-structured goals using the appropriate template (SMART, OKR, or custom).
 - **update_goal**: Use to refine or expand existing goals. You can add milestones, update deadlines, or improve the goal description.
 - **set_goal_phase**: Use to activate draft goals or mark goals as complete when the user indicates they're ready.
+- **schedule_meeting**: Use when the user wants to schedule a coaching session or check-in. This sends them a calendar invitation via email for accountability.
 
 Guidelines for using tools:
 1. BE PROACTIVE - When a user talks about goals, immediately use tools to create or update them. Don't just discuss - take action!
@@ -113,9 +114,10 @@ Guidelines for using tools:
 3. When user mentions wanting to achieve something, CREATE the goal right away
 4. When user provides more details about an existing goal, UPDATE it immediately
 5. When user says they're ready to start or have completed something, change the phase
-6. Use SMART criteria when creating goals unless the user prefers OKR
-7. Break down large goals into meaningful milestones
-8. Briefly explain what you did AFTER using a tool (not before)
+6. When user wants to schedule a check-in or coaching session, use schedule_meeting to book it
+7. Use SMART criteria when creating goals unless the user prefers OKR
+8. Break down large goals into meaningful milestones
+9. Briefly explain what you did AFTER using a tool (not before)
 
 CURRENT CONTEXT:
 User Phase: {user_phase}
@@ -248,6 +250,31 @@ GOAL_TOOLS = [
                 }
             },
             "required": ["goal_id", "phase"]
+        }
+    },
+    {
+        "name": "schedule_meeting",
+        "description": "Schedule a coaching session meeting with the user. Use this when the user wants to schedule their next check-in, set up accountability sessions, or book time for a coaching conversation. The user will receive a calendar invitation via email.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scheduled_at": {
+                    "type": "string",
+                    "description": "Meeting date and time in ISO 8601 format (e.g., '2024-01-15T14:00:00Z'). Must be in the future."
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "description": "Meeting duration in minutes. Default is 30. Must be between 15 and 180.",
+                    "minimum": 15,
+                    "maximum": 180,
+                    "default": 30
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes or agenda for the meeting."
+                }
+            },
+            "required": ["scheduled_at"]
         }
     }
 ]

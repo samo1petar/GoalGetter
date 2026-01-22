@@ -15,6 +15,8 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.models.goal import GoalModel
+from app.services.meeting_service import MeetingService
+from app.schemas.meeting import MeetingCreate
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,8 @@ class GoalToolHandler:
                 return await self._update_goal(tool_input, active_goal_id)
             elif tool_name == "set_goal_phase":
                 return await self._set_goal_phase(tool_input, active_goal_id)
+            elif tool_name == "schedule_meeting":
+                return await self._schedule_meeting(tool_input)
             else:
                 return {
                     "success": False,
@@ -327,3 +331,81 @@ class GoalToolHandler:
             "goal_id": goal_id,
             "goal": serialized_goal,
         }
+
+    async def _schedule_meeting(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Schedule a coaching session meeting for the user.
+
+        This creates a meeting and sends a calendar invitation via email.
+        """
+        scheduled_at_str = tool_input.get("scheduled_at")
+        duration_minutes = tool_input.get("duration_minutes", 30)
+        notes = tool_input.get("notes")
+
+        # Validate scheduled_at
+        if not scheduled_at_str:
+            return {
+                "success": False,
+                "error": "scheduled_at is required",
+            }
+
+        # Parse datetime
+        try:
+            # Handle ISO format with or without Z suffix
+            if scheduled_at_str.endswith("Z"):
+                scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+            else:
+                scheduled_at = datetime.fromisoformat(scheduled_at_str)
+
+            # Make naive datetime if it has timezone info (store as UTC)
+            if scheduled_at.tzinfo is not None:
+                scheduled_at = scheduled_at.replace(tzinfo=None)
+        except ValueError as e:
+            return {
+                "success": False,
+                "error": f"Invalid datetime format: {e}",
+            }
+
+        # Validate duration
+        if duration_minutes < 15 or duration_minutes > 180:
+            return {
+                "success": False,
+                "error": "duration_minutes must be between 15 and 180",
+            }
+
+        # Validate meeting is in the future
+        if scheduled_at <= datetime.utcnow():
+            return {
+                "success": False,
+                "error": "Meeting must be scheduled in the future",
+            }
+
+        # Create meeting using the meeting service
+        try:
+            meeting_service = MeetingService(self.db)
+            meeting_data = MeetingCreate(
+                scheduled_at=scheduled_at,
+                duration_minutes=duration_minutes,
+                notes=notes,
+            )
+
+            meeting = await meeting_service.create_meeting(
+                user_id=self.user_id,
+                meeting_data=meeting_data,
+                send_invitation=True,
+            )
+
+            logger.info(f"AI Coach scheduled meeting {meeting['id']} for user {self.user_id}")
+
+            return {
+                "success": True,
+                "meeting_id": meeting["id"],
+                "meeting": meeting,
+                "message": f"Meeting scheduled for {scheduled_at.strftime('%B %d, %Y at %I:%M %p')} UTC. Calendar invitation sent!",
+            }
+
+        except Exception as e:
+            logger.error(f"Error scheduling meeting: {e}")
+            return {
+                "success": False,
+                "error": f"Failed to schedule meeting: {str(e)}",
+            }

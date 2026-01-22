@@ -223,6 +223,27 @@ async def get_calendar_status(
     return calendar_service.get_calendar_status()
 
 
+@router.get("/email/status")
+async def get_email_status(
+    current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Get the status of email service configuration.
+
+    Returns whether email sending is properly configured.
+    """
+    from app.services.email_service import get_email_service
+    from app.core.config import settings
+
+    email_service = get_email_service()
+    return {
+        "is_configured": email_service.is_configured,
+        "from_email": settings.FROM_EMAIL,
+        "from_name": settings.FROM_NAME,
+        "message": "Email service is ready" if email_service.is_configured else "SENDGRID_API_KEY not set - emails will not be sent"
+    }
+
+
 @router.get("/{meeting_id}", response_model=MeetingResponse)
 async def get_meeting(
     meeting_id: str,

@@ -165,6 +165,13 @@ export function useWebSocket() {
                 toast.success('AI Coach updated goal phase');
                 break;
               }
+
+              case 'schedule_meeting': {
+                // Invalidate meetings cache to refetch
+                queryClient.invalidateQueries({ queryKey: ['meetings'] });
+                toast.success('Meeting scheduled! Check your email for the calendar invite.');
+                break;
+              }
             }
           } else if (data.tool_result?.error) {
             console.error(`Tool ${data.tool} failed:`, data.tool_result.error);
