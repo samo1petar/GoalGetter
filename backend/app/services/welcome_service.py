@@ -237,6 +237,7 @@ Example tone: "Welcome back! Last session you made great progress on your 'Learn
     async def generate_welcome_message(
         self,
         user_id: str,
+        is_login: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate the welcome message for a user on login.
@@ -247,6 +248,8 @@ Example tone: "Welcome back! Last session you made great progress on your 'Learn
 
         Args:
             user_id: The user's ID
+            is_login: Whether this is an explicit login event. If False,
+                      returns empty response (no welcome message).
 
         Returns:
             Dict with:
@@ -255,6 +258,15 @@ Example tone: "Welcome back! Last session you made great progress on your 'Learn
             - has_context: Whether the user has prior context
             - active_goals: List of active goals (for returning users)
         """
+        # Only generate welcome message on explicit login
+        if not is_login:
+            return {
+                "message": None,
+                "is_first_time": False,
+                "has_context": False,
+                "active_goals": [],
+            }
+
         try:
             # Check if first-time user
             is_first_time = await self.check_is_first_time_user(user_id)
