@@ -73,6 +73,11 @@ class Database:
             await cls.db.chat_messages.create_index([("user_id", 1), ("timestamp", -1)])
             await cls.db.chat_messages.create_index("meeting_id")
 
+            # Session contexts collection indexes (for AI Coach memory)
+            await cls.db.session_contexts.create_index([("user_id", 1), ("created_at", -1)])
+            await cls.db.session_contexts.create_index([("user_id", 1), ("is_summary", 1)])
+            await cls.db.session_contexts.create_index("session_id")
+
             logger.info("Database indexes created successfully")
 
         except Exception as e:

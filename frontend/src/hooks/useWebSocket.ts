@@ -21,6 +21,9 @@ export function useWebSocket() {
     setEditingGoal,
     setConnectionStatus,
     setError,
+    setWelcomeSummary,
+    setHasContext,
+    setSessionId,
   } = useChatStore();
   const { setActiveGoalId } = useUIStore();
   const queryClient = useQueryClient();
@@ -42,6 +45,30 @@ export function useWebSocket() {
         case 'connected':
           setConnectionStatus('connected');
           setError(null);
+          // Handle session context memory
+          if (data.session_id) {
+            setSessionId(data.session_id);
+          }
+          if (data.has_context !== undefined) {
+            setHasContext(data.has_context);
+          }
+          break;
+
+        case 'welcome':
+          // Handle welcome message as the first assistant message in chat
+          if (data.content && data.message_id) {
+            addMessage({
+              id: data.message_id,
+              user_id: '',
+              role: 'assistant',
+              content: data.content,
+              timestamp: new Date().toISOString(),
+            });
+          }
+          // Also set welcome summary for any legacy UI components that use it
+          if (data.content) {
+            setWelcomeSummary(data.content);
+          }
           break;
 
         case 'typing':
@@ -150,6 +177,9 @@ export function useWebSocket() {
     setTyping,
     setConnectionStatus,
     setError,
+    setWelcomeSummary,
+    setHasContext,
+    setSessionId,
   ]);
 
   const sendMessage = useCallback(

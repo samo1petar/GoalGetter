@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
+import { useChatStore } from '@/stores/chatStore';
 import { authApi, type SignupRequest, type LoginRequest } from '@/lib/api/auth';
 import { toast } from 'sonner';
 
 export function useAuth() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     user,
     isAuthenticated,
@@ -17,6 +19,7 @@ export function useAuth() {
     setUser,
     logout: logoutStore,
   } = useAuthStore();
+  const { clearMessages } = useChatStore();
 
   // Fetch current user
   const { data: userData, refetch: refetchUser } = useQuery({
@@ -76,10 +79,16 @@ export function useAuth() {
     } catch {
       // Ignore errors on logout
     }
+    // Clear chat messages to prevent data leakage to next user
+    clearMessages();
+    // Clear all user-specific caches to prevent data leakage
+    queryClient.removeQueries({ queryKey: ['chat'] });
+    queryClient.removeQueries({ queryKey: ['goals'] });
+    queryClient.removeQueries({ queryKey: ['goal'] });
     logoutStore();
     router.push('/login');
     toast.success('Logged out successfully');
-  }, [logoutStore, router]);
+  }, [logoutStore, clearMessages, queryClient, router]);
 
   // Google OAuth
   const loginWithGoogle = useCallback(() => {

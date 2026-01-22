@@ -155,17 +155,24 @@ async def get_current_user_info(
 @router.post("/logout")
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
     Logout current user by blacklisting their access token.
 
     The token will be added to Redis blacklist with TTL matching the token's
     remaining lifetime. This ensures the token cannot be reused even if stolen.
+
+    Additionally, extracts and saves session context for AI Coach memory.
     """
+    import logging
     from datetime import datetime
     from app.core.security import SecurityUtils
     from app.core.redis import RedisClient
+    from app.services.context_service import get_context_service
+
+    logger = logging.getLogger(__name__)
 
     token = credentials.credentials
     payload = SecurityUtils.verify_token(token, token_type="access")
@@ -177,6 +184,20 @@ async def logout(
         ttl = int(exp - datetime.utcnow().timestamp())
         if ttl > 0:
             await RedisClient.blacklist_token(jti, ttl)
+
+    # Extract and save session context for AI Coach memory
+    # This runs in the background and doesn't block the logout response
+    try:
+        context_service = get_context_service(db)
+        session_id = jti or f"logout-{datetime.utcnow().timestamp()}"
+        await context_service.extract_and_save_context(
+            user_id=current_user["id"],
+            session_id=session_id,
+        )
+        logger.info(f"Session context extracted on logout for user {current_user['id']}")
+    except Exception as e:
+        # Don't block logout if context extraction fails
+        logger.warning(f"Failed to extract session context on logout: {e}")
 
     return {
         "message": "Successfully logged out",

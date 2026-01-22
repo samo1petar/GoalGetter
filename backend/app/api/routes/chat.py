@@ -20,6 +20,8 @@ from app.services.llm import LLMServiceFactory, LLMProvider
 from app.services.goal_tool_handler import GoalToolHandler
 from app.models.message import MessageModel
 from app.models.goal import GoalModel
+from app.services.welcome_service import get_welcome_service
+from app.services.context_service import get_context_service
 from app.schemas.chat import (
     ChatHistoryResponse,
     ChatAccessResponse,
@@ -441,19 +443,53 @@ async def websocket_chat_endpoint(
             await websocket.close(code=4003, reason=access["reason"])
             return
 
-        # Connect to WebSocket manager
-        connected = await connection_manager.connect(websocket, user_id, user_phase)
+        # Connect to WebSocket manager with session tracking
+        import uuid
+        session_id = str(uuid.uuid4())
+
+        connected = await connection_manager.connect(websocket, user_id, user_phase, session_id)
         if not connected:
             await websocket.close(code=4000, reason="Failed to establish connection")
             return
 
+        # Generate welcome message for the user (first-time or returning)
+        welcome_service = get_welcome_service(db)
+        welcome_data = await welcome_service.generate_welcome_message(user_id)
+
         # Send connected confirmation
-        await websocket.send_json({
+        connected_message = {
             "type": "connected",
             "content": "Connected to GoalGetter AI Coach",
             "user_phase": user_phase,
             "meeting_id": access.get("meeting_id"),
-        })
+            "session_id": session_id,
+            "has_context": welcome_data.get("has_context", False),
+            "is_first_time": welcome_data.get("is_first_time", False),
+        }
+
+        await websocket.send_json(connected_message)
+
+        # Send and save the welcome message as the first assistant message
+        welcome_message_content = welcome_data.get("message")
+        if welcome_message_content:
+            # Save welcome message to database
+            welcome_message_doc = MessageModel.create_message_document(
+                user_id=user_id,
+                role="assistant",
+                content=welcome_message_content,
+                meeting_id=access.get("meeting_id"),
+            )
+            result = await db.chat_messages.insert_one(welcome_message_doc)
+            welcome_message_id = str(result.inserted_id)
+
+            # Send welcome message to the client
+            await websocket.send_json({
+                "type": "welcome",
+                "content": welcome_message_content,
+                "message_id": welcome_message_id,
+                "is_first_time": welcome_data.get("is_first_time", False),
+                "active_goals": welcome_data.get("active_goals", []),
+            })
 
         # Get user's goals for context
         user_goals = await get_user_goals(user_id, db)
@@ -690,6 +726,21 @@ async def websocket_chat_endpoint(
         logger.error(f"WebSocket error: {e}")
     finally:
         if user:
+            # Extract and save session context on disconnect
+            try:
+                context_service = get_context_service(db)
+                # Get session_id from connection info
+                conn_info = connection_manager.get_connection_info(websocket)
+                ws_session_id = conn_info.get("session_id") if conn_info else session_id
+                await context_service.extract_and_save_context(
+                    user_id=user_id,
+                    session_id=ws_session_id,
+                )
+                logger.info(f"Session context extracted on disconnect for user {user_id}")
+            except Exception as context_error:
+                # Don't block disconnect if context extraction fails
+                logger.warning(f"Failed to extract session context on disconnect: {context_error}")
+
             await connection_manager.disconnect(websocket)
 
 

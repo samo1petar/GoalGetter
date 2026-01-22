@@ -32,6 +32,7 @@ class ConnectionManager:
         websocket: WebSocket,
         user_id: str,
         user_phase: str = "goal_setting",
+        session_id: Optional[str] = None,
     ) -> bool:
         """
         Accept a new WebSocket connection.
@@ -40,6 +41,7 @@ class ConnectionManager:
             websocket: The WebSocket connection
             user_id: The user's ID
             user_phase: The user's current phase
+            session_id: Unique session identifier for context tracking
 
         Returns:
             True if connection successful, False otherwise
@@ -53,14 +55,16 @@ class ConnectionManager:
                     self.active_connections[user_id] = set()
                 self.active_connections[user_id].add(websocket)
 
-                # Store connection info
+                # Store connection info with session tracking
                 self.connection_info[websocket] = {
                     "user_id": user_id,
                     "user_phase": user_phase,
+                    "session_id": session_id,
                     "connected_at": datetime.utcnow().isoformat(),
+                    "message_count": 0,  # Track messages for periodic context save
                 }
 
-            logger.info(f"WebSocket connected for user {user_id}")
+            logger.info(f"WebSocket connected for user {user_id}, session {session_id}")
             return True
 
         except Exception as e:
@@ -214,6 +218,63 @@ class ConnectionManager:
                 for websocket in self.active_connections[user_id]:
                     if websocket in self.connection_info:
                         self.connection_info[websocket]["user_phase"] = new_phase
+
+    def increment_message_count(self, websocket: WebSocket) -> int:
+        """
+        Increment message count for a connection and return the new count.
+
+        Args:
+            websocket: The WebSocket connection
+
+        Returns:
+            The new message count, or 0 if connection not found
+        """
+        if websocket in self.connection_info:
+            self.connection_info[websocket]["message_count"] = (
+                self.connection_info[websocket].get("message_count", 0) + 1
+            )
+            return self.connection_info[websocket]["message_count"]
+        return 0
+
+    def should_save_context(self, websocket: WebSocket, threshold: int = 1000) -> bool:
+        """
+        Check if the connection has reached the message threshold for periodic context save.
+
+        Args:
+            websocket: The WebSocket connection
+            threshold: Message count threshold for triggering save
+
+        Returns:
+            True if message count is at or exceeds threshold and is a multiple of threshold
+        """
+        if websocket in self.connection_info:
+            count = self.connection_info[websocket].get("message_count", 0)
+            # Save at every threshold multiple (1000, 2000, 3000, etc.)
+            return count > 0 and count % threshold == 0
+        return False
+
+    def reset_message_count(self, websocket: WebSocket) -> None:
+        """
+        Reset the message count for a connection (after context save).
+
+        Args:
+            websocket: The WebSocket connection
+        """
+        if websocket in self.connection_info:
+            self.connection_info[websocket]["message_count"] = 0
+
+    def get_session_id(self, websocket: WebSocket) -> Optional[str]:
+        """
+        Get the session ID for a connection.
+
+        Args:
+            websocket: The WebSocket connection
+
+        Returns:
+            The session ID or None if not found
+        """
+        info = self.connection_info.get(websocket)
+        return info.get("session_id") if info else None
 
 
 # Global connection manager instance

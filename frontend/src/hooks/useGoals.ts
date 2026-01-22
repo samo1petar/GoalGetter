@@ -2,28 +2,34 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { goalsApi, type GoalListParams } from '@/lib/api/goals';
+import { useAuthStore } from '@/stores/authStore';
 import type { CreateGoalRequest, UpdateGoalRequest } from '@/types';
 import { toast } from 'sonner';
 
 export function useGoals(params?: GoalListParams) {
+  const { user } = useAuthStore();
   return useQuery({
-    queryKey: ['goals', params],
+    queryKey: ['goals', user?.id, params],
     queryFn: () => goalsApi.list(params),
+    enabled: !!user?.id,
   });
 }
 
 export function useGoal(goalId: string | null) {
+  const { user } = useAuthStore();
   return useQuery({
-    queryKey: ['goal', goalId],
+    queryKey: ['goal', user?.id, goalId],
     queryFn: () => (goalId ? goalsApi.get(goalId) : null),
-    enabled: !!goalId,
+    enabled: !!goalId && !!user?.id,
   });
 }
 
 export function useGoalStatistics() {
+  const { user } = useAuthStore();
   return useQuery({
-    queryKey: ['goals', 'statistics'],
+    queryKey: ['goals', 'statistics', user?.id],
     queryFn: goalsApi.getStatistics,
+    enabled: !!user?.id,
   });
 }
 

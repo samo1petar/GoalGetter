@@ -159,8 +159,16 @@ export interface DraftGoalPayload {
   template_type: string;
 }
 
+// Active goal info included in welcome message
+export interface ActiveGoalInfo {
+  id: string;
+  title: string;
+  phase: string;
+  progress: number;
+}
+
 export interface WebSocketMessage {
-  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong' | 'tool_call';
+  type: 'connected' | 'typing' | 'response_chunk' | 'response' | 'error' | 'pong' | 'tool_call' | 'welcome';
   content?: string;
   message_id?: string;
   is_complete?: boolean;
@@ -171,6 +179,14 @@ export interface WebSocketMessage {
   // Tool call fields
   tool?: 'create_goal' | 'update_goal' | 'set_goal_phase';
   tool_result?: ToolCallResult;
+  // Session context fields
+  session_id?: string;
+  has_context?: boolean;
+  // Welcome message fields (sent as first message on connect)
+  is_first_time?: boolean;
+  active_goals?: ActiveGoalInfo[];
+  // Deprecated: use 'welcome' message type instead
+  welcome_summary?: string;
 }
 
 // Chat message with provider selection

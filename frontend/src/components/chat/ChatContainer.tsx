@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { chatApi } from '@/lib/api/chat';
+import { useEffect, useCallback, useRef } from 'react';
 import { useChatStore } from '@/stores/chatStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDraftGoals } from '@/hooks/useDraftGoals';
 import { useUIStore } from '@/stores/uiStore';
@@ -15,10 +14,22 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function ChatContainer() {
-  const { messages, setMessages, connectionStatus } = useChatStore();
+  const { clearMessages, connectionStatus } = useChatStore();
+  const { user } = useAuthStore();
   const { sendMessage } = useWebSocket();
   const { getDraftsArray, activeEditingGoalId } = useDraftGoals();
   const { activeGoalId } = useUIStore();
+  const prevUserIdRef = useRef<string | null>(null);
+
+  // Clear messages when user changes (safety measure)
+  useEffect(() => {
+    const currentUserId = user?.id || null;
+    if (prevUserIdRef.current !== null && prevUserIdRef.current !== currentUserId) {
+      // User changed, clear messages
+      clearMessages();
+    }
+    prevUserIdRef.current = currentUserId;
+  }, [user?.id, clearMessages]);
 
   // Wrap sendMessage to include draft goals with Markdown content and active goal ID
   // The getDraftsArray() now returns content as Markdown (via contentMarkdown field)
@@ -33,19 +44,9 @@ export function ChatContainer() {
     [sendMessage, getDraftsArray, activeEditingGoalId, activeGoalId]
   );
 
-  // Load chat history
-  const { data: historyData } = useQuery({
-    queryKey: ['chat', 'history'],
-    queryFn: () => chatApi.getHistory({ page_size: 50 }),
-    staleTime: 60000,
-  });
-
-  // Set messages from history
-  useEffect(() => {
-    if (historyData?.messages && messages.length === 0) {
-      setMessages(historyData.messages.reverse());
-    }
-  }, [historyData, messages.length, setMessages]);
+  // Note: Chat history is intentionally NOT loaded on login.
+  // Each session starts fresh with a context-aware welcome message from AI Coach.
+  // The welcome message is sent via WebSocket on connect and saved to the database.
 
   return (
     <ChatAccessGate>
@@ -66,7 +67,7 @@ export function ChatContainer() {
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Messages (includes welcome message as first assistant message) */}
         <ScrollArea className="flex-1 p-4">
           <MessageList />
         </ScrollArea>

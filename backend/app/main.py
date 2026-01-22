@@ -16,7 +16,7 @@ from app.core.redis import RedisClient
 from app.core.logging_config import setup_logging, get_logger
 from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware import register_middleware
-from app.api.routes import auth, goals, templates, chat, meetings, users
+from app.api.routes import auth, goals, templates, chat, meetings, users, context
 
 # Setup structured logging
 setup_logging()
@@ -237,6 +237,10 @@ app = FastAPI(
             "name": "Users",
             "description": "User profile and preferences management",
         },
+        {
+            "name": "Context",
+            "description": "Session context memory for AI Coach personalization",
+        },
     ],
     contact={
         "name": "GoalGetter Support",
@@ -388,6 +392,11 @@ app.include_router(
     users.router,
     prefix=f"{settings.api_prefix}/users",
     tags=["Users"],
+)
+app.include_router(
+    context.router,
+    prefix=f"{settings.api_prefix}/context",
+    tags=["Context"],
 )
 
 
