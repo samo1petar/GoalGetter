@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # OpenAI API
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MODEL: str = "gpt-5-nano"
     OPENAI_MAX_TOKENS: int = 4096
     OPENAI_TEMPERATURE: float = 0.7
 

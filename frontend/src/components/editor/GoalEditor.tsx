@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { BlockNoteView } from '@blocknote/mantine';
 import { useCreateBlockNote } from '@blocknote/react';
 import type { PartialBlock, Block, BlockNoteEditor } from '@blocknote/core';
@@ -29,11 +30,18 @@ interface GoalEditorProps {
 
 export function GoalEditor({ goalId, initialContent, contentFormat, onContentChange, onEditorReady }: GoalEditorProps) {
   const { updateGoal } = useGoalMutations();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const isUpdatingFromExternal = useRef(false);
   // Track the last content we processed to detect external changes
   const lastProcessedContent = useRef<string | undefined>(undefined);
   // Track if this is the initial mount
   const isInitialMount = useRef(true);
+
+  // Handle hydration for theme
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Determine if content is Markdown based on format hint or content analysis
   const isMarkdownContent = useMemo(() => {
@@ -257,7 +265,7 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
       )}
       <BlockNoteView
         editor={editor}
-        theme="light"
+        theme={mounted && resolvedTheme === 'dark' ? 'dark' : 'light'}
         className="h-full"
       />
     </div>
