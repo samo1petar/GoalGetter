@@ -3,6 +3,11 @@ import type { WebSocketMessage, DraftGoalPayload, LLMProvider } from '@/types';
 type MessageHandler = (data: WebSocketMessage) => void;
 type ConnectionHandler = () => void;
 
+// Module-level flag to track if we've connected this session.
+// This persists across WebSocketClient instances so that navigation
+// between pages doesn't reset it and trigger multiple welcome messages.
+let hasConnectedThisSession = false;
+
 export interface SendMessageOptions {
   draftGoals?: DraftGoalPayload[];
   provider?: LLMProvider;
@@ -20,7 +25,6 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
-  private isFirstConnection = true;
 
   constructor(url: string, token: string) {
     this.url = url;
@@ -34,14 +38,18 @@ export class WebSocketClient {
   connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    // Only send is_login=true on first connection, not reconnections
-    const isLogin = this.isFirstConnection;
+    // Only send is_login=true on first connection of the session, not on
+    // reconnections or when navigating between pages. The module-level
+    // hasConnectedThisSession flag persists across WebSocketClient instances.
+    const isLogin = !hasConnectedThisSession;
     const wsUrl = `${this.url}?token=${encodeURIComponent(this.token)}&is_login=${isLogin}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
-      this.isFirstConnection = false;
+      // Mark that we've connected this session so subsequent connections
+      // (from page navigation or reconnects) won't trigger welcome messages
+      hasConnectedThisSession = true;
       this.startPingInterval();
       this.connectHandlers.forEach((handler) => handler());
     };
