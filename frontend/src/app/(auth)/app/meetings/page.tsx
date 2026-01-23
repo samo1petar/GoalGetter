@@ -26,10 +26,10 @@ import {
 } from '@/components/ui/select';
 import {
   Calendar,
+  CalendarCheck,
   Clock,
   CheckCircle,
   XCircle,
-  Video,
   Loader2,
   Plus,
 } from 'lucide-react';
@@ -156,12 +156,33 @@ export default function MeetingsPage() {
         </Button>
       </div>
 
+      {/* Meetings Explanation Card */}
+      <Card className="mb-6 bg-muted/50">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-full bg-primary/10">
+              <CalendarCheck className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium mb-2">What are Meetings?</h3>
+              <p className="text-sm text-muted-foreground">
+                Meetings are scheduled coaching sessions with Alfred, your AI Coach,
+                right here on GoalGetter. They&apos;re not about limiting your access to
+                the app - they&apos;re a powerful tool to keep you accountable and strengthen
+                your commitment to achieving your goals. Regular check-ins help you
+                stay focused and make consistent progress.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Next Meeting Card */}
       {nextMeeting?.meeting && (
         <Card className="mb-6 border-primary/50 bg-primary/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5" />
+              <CalendarCheck className="h-5 w-5" />
               Next Meeting
             </CardTitle>
             <CardDescription>
