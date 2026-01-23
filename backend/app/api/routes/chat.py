@@ -21,7 +21,6 @@ from app.services.goal_tool_handler import GoalToolHandler
 from app.models.message import MessageModel
 from app.models.goal import GoalModel
 from app.services.welcome_service import get_welcome_service
-from app.services.context_service import get_context_service
 from app.schemas.chat import (
     ChatHistoryResponse,
     ChatAccessResponse,
@@ -771,20 +770,16 @@ async def websocket_chat_endpoint(
         logger.error(f"WebSocket error: {e}")
     finally:
         if user:
-            # Extract and save session context on disconnect
-            try:
-                context_service = get_context_service(db)
-                # Get session_id from connection info
-                conn_info = connection_manager.get_connection_info(websocket)
-                ws_session_id = conn_info.get("session_id") if conn_info else session_id
-                await context_service.extract_and_save_context(
-                    user_id=user_id,
-                    session_id=ws_session_id,
-                )
-                logger.info(f"Session context extracted on disconnect for user {user_id}")
-            except Exception as context_error:
-                # Don't block disconnect if context extraction fails
-                logger.warning(f"Failed to extract session context on disconnect: {context_error}")
+            # Queue context extraction as background task (non-blocking)
+            from app.tasks.celery_tasks import extract_session_context_task
+
+            conn_info = connection_manager.get_connection_info(websocket)
+            ws_session_id = conn_info.get("session_id") if conn_info else session_id
+            extract_session_context_task.delay(
+                user_id=user_id,
+                session_id=ws_session_id,
+            )
+            logger.info(f"Queued context extraction on disconnect for user {user_id}")
 
             await connection_manager.disconnect(websocket)
 

@@ -170,7 +170,6 @@ async def logout(
     from datetime import datetime
     from app.core.security import SecurityUtils
     from app.core.redis import RedisClient
-    from app.services.context_service import get_context_service
 
     logger = logging.getLogger(__name__)
 
@@ -185,19 +184,15 @@ async def logout(
         if ttl > 0:
             await RedisClient.blacklist_token(jti, ttl)
 
-    # Extract and save session context for AI Coach memory
-    # This runs in the background and doesn't block the logout response
-    try:
-        context_service = get_context_service(db)
-        session_id = jti or f"logout-{datetime.utcnow().timestamp()}"
-        await context_service.extract_and_save_context(
-            user_id=current_user["id"],
-            session_id=session_id,
-        )
-        logger.info(f"Session context extracted on logout for user {current_user['id']}")
-    except Exception as e:
-        # Don't block logout if context extraction fails
-        logger.warning(f"Failed to extract session context on logout: {e}")
+    # Queue context extraction as background task (non-blocking)
+    from app.tasks.celery_tasks import extract_session_context_task
+
+    session_id = jti or f"logout-{datetime.utcnow().timestamp()}"
+    extract_session_context_task.delay(
+        user_id=current_user["id"],
+        session_id=session_id,
+    )
+    logger.info(f"Queued context extraction for user {current_user['id']}")
 
     return {
         "message": "Successfully logged out",

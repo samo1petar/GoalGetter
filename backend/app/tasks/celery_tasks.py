@@ -474,6 +474,111 @@ def send_phase_transition_email_task(
     )
 
 
+# Context Extraction Task
+
+@shared_task(
+    name="app.tasks.celery_tasks.extract_session_context_task",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+)
+def extract_session_context_task(
+    self,
+    user_id: str,
+    session_id: str,
+) -> Dict[str, Any]:
+    """
+    Extract and save session context in background.
+
+    This task is queued on logout/disconnect to extract meaningful
+    context from the user's conversation without blocking the response.
+
+    Args:
+        user_id: The user's ID
+        session_id: The session ID for this context
+
+    Returns:
+        Dict with success status and context_id if created
+    """
+    try:
+        logger.info(f"Starting context extraction for user {user_id}, session {session_id}")
+
+        db = get_sync_db()
+
+        # Get conversation history (last 100 messages)
+        messages = list(db.chat_messages.find(
+            {"user_id": ObjectId(user_id)},
+            sort=[("timestamp", -1)],
+            limit=100,
+        ))
+
+        if len(messages) < 2:
+            logger.info(f"Insufficient messages for context extraction: {len(messages)}")
+            return {"success": True, "context_id": None, "reason": "insufficient_messages"}
+
+        # Reverse to chronological order
+        messages = list(reversed(messages))
+        conversation_history = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in messages
+        ]
+
+        # Run async extraction in sync context
+        result = asyncio.run(_extract_context_async(user_id, session_id, conversation_history))
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in context extraction task: {e}")
+        try:
+            raise self.retry(exc=e)
+        except self.MaxRetriesExceededError:
+            return {"success": False, "error": str(e)}
+
+
+async def _extract_context_async(
+    user_id: str,
+    session_id: str,
+    conversation_history: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    """
+    Async helper for context extraction.
+    Separated to allow using async LLM service.
+    """
+    from app.services.context_service import ContextService
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    # Create async MongoDB client for this operation
+    client = AsyncIOMotorClient(settings.MONGODB_URI)
+    db = client[settings.MONGODB_DB_NAME]
+
+    try:
+        context_service = ContextService(db)
+
+        # Extract context using LLM
+        session_context = await context_service.extract_session_context(
+            user_id=user_id,
+            session_id=session_id,
+            conversation_history=conversation_history,
+        )
+
+        if not session_context or not session_context.get("context_points"):
+            return {"success": True, "context_id": None, "reason": "no_context_extracted"}
+
+        # Save context
+        context_id = await context_service.save_session_context(session_context)
+
+        # Check if summarization needed
+        if context_id:
+            await context_service.maybe_summarize_old_sessions(user_id)
+
+        logger.info(f"Context extraction complete for user {user_id}: {context_id}")
+        return {"success": True, "context_id": context_id}
+
+    finally:
+        client.close()
+
+
 # Health Check Task
 
 @shared_task(name="app.tasks.celery_tasks.health_check")
