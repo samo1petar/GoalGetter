@@ -634,9 +634,10 @@ class OpenAIService(BaseLLMService):
             # Call OpenAI API
             response = await client.chat.completions.create(
                 model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
+                max_completion_tokens=self.max_tokens,
+                #temperature=self.temperature,
                 messages=messages,
+                reasoning_effort="minimal",
             )
 
             # Extract response
@@ -735,11 +736,13 @@ class OpenAIService(BaseLLMService):
             # Prepare API call parameters
             api_params = {
                 "model": self.model,
-                "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
+                # "max_tokens": self.max_tokens,
+                "max_completion_tokens": self.max_tokens,
+                #"temperature": self.temperature,
                 "messages": messages,
                 "stream": True,
                 "stream_options": {"include_usage": True},
+                "reasoning_effort": "minimal",
             }
 
             # Add tools if enabled
