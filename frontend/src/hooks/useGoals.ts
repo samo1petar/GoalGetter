@@ -42,6 +42,7 @@ export function useTemplates() {
 
 export function useGoalMutations() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   const createGoal = useMutation({
     mutationFn: (data: CreateGoalRequest) => goalsApi.create(data),
@@ -59,7 +60,7 @@ export function useGoalMutations() {
       goalsApi.update(goalId, data),
     onSuccess: (_, { goalId }) => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
-      queryClient.invalidateQueries({ queryKey: ['goal', goalId] });
+      queryClient.invalidateQueries({ queryKey: ['goal', user?.id, goalId] });
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update goal');
@@ -71,7 +72,7 @@ export function useGoalMutations() {
       goalsApi.updatePhase(goalId, phase),
     onSuccess: (_, { goalId }) => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
-      queryClient.invalidateQueries({ queryKey: ['goal', goalId] });
+      queryClient.invalidateQueries({ queryKey: ['goal', user?.id, goalId] });
       toast.success('Goal phase updated');
     },
     onError: (error: Error) => {

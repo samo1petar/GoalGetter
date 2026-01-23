@@ -27,6 +27,7 @@ import {
   FileText,
   Undo2,
   Redo2,
+  FileEdit,
 } from 'lucide-react';
 import type { BlockNoteEditor } from '@blocknote/core';
 
@@ -160,7 +161,17 @@ export function EditorPanel() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handlePhaseChange('active')}>
+                <DropdownMenuItem
+                  onClick={() => handlePhaseChange('draft')}
+                  disabled={goal.phase === 'draft'}
+                >
+                  <FileEdit className="mr-2 h-4 w-4" />
+                  Set Draft
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handlePhaseChange('active')}
+                  disabled={goal.phase === 'active'}
+                >
                   <PlayCircle className="mr-2 h-4 w-4" />
                   Set Active
                 </DropdownMenuItem>
