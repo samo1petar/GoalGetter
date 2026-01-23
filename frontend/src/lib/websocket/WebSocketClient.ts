@@ -6,7 +6,16 @@ type ConnectionHandler = () => void;
 // Module-level flag to track if we've connected this session.
 // This persists across WebSocketClient instances so that navigation
 // between pages doesn't reset it and trigger multiple welcome messages.
+// IMPORTANT: Must be reset on logout so next login triggers welcome message.
 let hasConnectedThisSession = false;
+
+/**
+ * Reset the session connection flag.
+ * Call this when the user logs out so the next login will trigger a welcome message.
+ */
+export function resetWebSocketSessionFlag(): void {
+  hasConnectedThisSession = false;
+}
 
 export interface SendMessageOptions {
   draftGoals?: DraftGoalPayload[];

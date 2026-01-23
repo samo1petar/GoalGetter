@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { authApi, type SignupRequest, type LoginRequest } from '@/lib/api/auth';
+import { resetWebSocketSessionFlag } from '@/lib/websocket/WebSocketClient';
 import { toast } from 'sonner';
 
 export function useAuth() {
@@ -79,6 +80,8 @@ export function useAuth() {
     } catch {
       // Ignore errors on logout
     }
+    // Reset WebSocket session flag so next login triggers welcome message
+    resetWebSocketSessionFlag();
     // Clear chat messages to prevent data leakage to next user
     clearMessages();
     // Clear all user-specific caches to prevent data leakage

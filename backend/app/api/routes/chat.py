@@ -524,9 +524,9 @@ async def websocket_chat_endpoint(
                             )
                             summary_result = await db.chat_messages.insert_one(summary_doc)
 
-                            # Send to client
+                            # Send to client (use "response" type so frontend handles it)
                             await websocket.send_json({
-                                "type": "message",
+                                "type": "response",
                                 "role": "assistant",
                                 "content": summary_content,
                                 "message_id": str(summary_result.inserted_id),

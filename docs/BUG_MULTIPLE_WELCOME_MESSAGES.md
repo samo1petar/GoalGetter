@@ -192,3 +192,37 @@ hasConnectedThisSession = true;
 6. Navigate to Meetings page
 7. Navigate back to Workspace
 8. Verify NO new welcome message appears
+
+---
+
+## Follow-up Fix (2026-01-23)
+
+### Problem Discovered
+
+The original fix broke welcome messages entirely. The module-level `hasConnectedThisSession` flag never reset, so after the first connection, ALL subsequent logins (even after logout) sent `is_login=false` and received no welcome message.
+
+### Additional Fix Applied
+
+1. **Added reset function** to `WebSocketClient.ts`:
+```typescript
+export function resetWebSocketSessionFlag(): void {
+  hasConnectedThisSession = false;
+}
+```
+
+2. **Call reset on logout** in `useAuth.ts`:
+```typescript
+import { resetWebSocketSessionFlag } from '@/lib/websocket/WebSocketClient';
+
+const logout = useCallback(async () => {
+  // ...
+  resetWebSocketSessionFlag();  // Reset so next login triggers welcome
+  // ...
+});
+```
+
+### Behavior After Fix
+
+- **Page navigation (Goals → Workspace):** No duplicate welcome (flag stays `true`)
+- **Logout → Login:** Welcome message appears (flag reset to `false` on logout)
+- **Page refresh:** Welcome message appears (module reloads, flag reset to `false`)
