@@ -25,7 +25,7 @@ export interface SendMessageOptions {
 
 export class WebSocketClient {
   private url: string;
-  private token: string;
+  private ticketFetcher: () => Promise<string>;
   private ws: WebSocket | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
   private connectHandlers: Set<ConnectionHandler> = new Set();
@@ -35,52 +35,67 @@ export class WebSocketClient {
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
 
-  constructor(url: string, token: string) {
+  /**
+   * Create a new WebSocketClient.
+   * @param url - The WebSocket endpoint URL
+   * @param ticketFetcher - A function that fetches a single-use authentication ticket
+   */
+  constructor(url: string, ticketFetcher: () => Promise<string>) {
     this.url = url;
-    this.token = token;
+    this.ticketFetcher = ticketFetcher;
   }
 
   get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    // Only send is_login=true on first connection of the session, not on
-    // reconnections or when navigating between pages. The module-level
-    // hasConnectedThisSession flag persists across WebSocketClient instances.
-    const isLogin = !hasConnectedThisSession;
-    const wsUrl = `${this.url}?token=${encodeURIComponent(this.token)}&is_login=${isLogin}`;
-    this.ws = new WebSocket(wsUrl);
+    try {
+      // Fetch a single-use ticket for secure WebSocket authentication
+      // This prevents JWT token exposure in WebSocket URLs
+      const ticket = await this.ticketFetcher();
 
-    this.ws.onopen = () => {
-      this.reconnectAttempts = 0;
-      // Mark that we've connected this session so subsequent connections
-      // (from page navigation or reconnects) won't trigger welcome messages
-      hasConnectedThisSession = true;
-      this.startPingInterval();
-      this.connectHandlers.forEach((handler) => handler());
-    };
+      // Only send is_login=true on first connection of the session, not on
+      // reconnections or when navigating between pages. The module-level
+      // hasConnectedThisSession flag persists across WebSocketClient instances.
+      const isLogin = !hasConnectedThisSession;
+      const wsUrl = `${this.url}?ticket=${encodeURIComponent(ticket)}&is_login=${isLogin}`;
+      this.ws = new WebSocket(wsUrl);
 
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as WebSocketMessage;
-        this.messageHandlers.forEach((handler) => handler(data));
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-      }
-    };
+      this.ws.onopen = () => {
+        this.reconnectAttempts = 0;
+        // Mark that we've connected this session so subsequent connections
+        // (from page navigation or reconnects) won't trigger welcome messages
+        hasConnectedThisSession = true;
+        this.startPingInterval();
+        this.connectHandlers.forEach((handler) => handler());
+      };
 
-    this.ws.onclose = () => {
-      this.stopPingInterval();
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as WebSocketMessage;
+          this.messageHandlers.forEach((handler) => handler(data));
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+
+      this.ws.onclose = () => {
+        this.stopPingInterval();
+        this.disconnectHandlers.forEach((handler) => handler());
+        this.attemptReconnect();
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+    } catch (error) {
+      console.error('Failed to fetch WebSocket ticket:', error);
+      // Notify disconnect handlers so UI can reflect the error state
       this.disconnectHandlers.forEach((handler) => handler());
-      this.attemptReconnect();
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+    }
   }
 
   disconnect(): void {
@@ -144,7 +159,9 @@ export class WebSocketClient {
 
     setTimeout(() => {
       console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      this.connect();
+      // connect() is now async, but we don't need to await here
+      // Errors are handled within connect() and trigger disconnect handlers
+      void this.connect();
     }, delay);
   }
 

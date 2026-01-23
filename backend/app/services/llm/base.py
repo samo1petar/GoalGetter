@@ -69,7 +69,7 @@ class BaseLLMService(ABC):
     @abstractmethod
     async def stream_message(
         self,
-        message: str,
+        message: Optional[str],
         conversation_history: Optional[List[Dict[str, str]]] = None,
         user_phase: str = "goal_setting",
         user_goals: Optional[List[Dict[str, Any]]] = None,
@@ -80,7 +80,9 @@ class BaseLLMService(ABC):
         Stream a message response with tool call support.
 
         Args:
-            message: The user's message content
+            message: The user's message content. Can be None if
+                     conversation_history already contains the user message
+                     (e.g., on follow-up rounds after tool calls).
             conversation_history: Previous messages in the conversation
             user_phase: The user's current phase
             user_goals: List of user's saved goals for context

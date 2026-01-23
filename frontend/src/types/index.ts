@@ -177,7 +177,7 @@ export interface WebSocketMessage {
   meeting_id?: string;
   tokens_used?: number;
   // Tool call fields
-  tool?: 'create_goal' | 'update_goal' | 'set_goal_phase';
+  tool?: 'create_goal' | 'update_goal' | 'set_goal_phase' | 'schedule_meeting';
   tool_result?: ToolCallResult;
   // Focus goal field (for switching to goal before tool execution)
   goal_id?: string;

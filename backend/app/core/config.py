@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "GoalGetter"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    # SECURITY: Default to False to prevent accidental exposure in production
+    # Set DEBUG=True explicitly in development environments via .env file
+    DEBUG: bool = False
     API_VERSION: str = "v1"
     HOST: str = "0.0.0.0"
     PORT: int = 8000

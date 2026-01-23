@@ -16,6 +16,7 @@ from slowapi.util import get_remote_address
 from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import SecurityUtils, get_current_active_user
+from app.core.redis import RedisClient
 from app.core.websocket_manager import connection_manager, get_connection_manager
 from app.services.llm import LLMServiceFactory, LLMProvider
 from app.services.goal_tool_handler import GoalToolHandler
@@ -337,6 +338,73 @@ async def clear_chat_history(
     )
 
 
+# WebSocket Ticket Authentication
+# SECURITY: Implements ticket-based authentication to avoid exposing JWT tokens in WebSocket URLs
+# This prevents token leakage through logs, browser history, and referrer headers
+
+@router.post("/ws/ticket")
+@limiter.limit("10/minute")
+async def create_websocket_ticket(
+    request: Request,
+    current_user: dict = Depends(get_current_active_user),
+) -> Dict[str, str]:
+    """
+    Generate a short-lived, single-use ticket for WebSocket authentication.
+
+    This endpoint creates a secure ticket that can be exchanged for WebSocket
+    connection authentication. The ticket:
+    - Expires in 30 seconds
+    - Can only be used once
+    - Is bound to the user who requested it
+
+    SECURITY: This prevents JWT token exposure in WebSocket URLs which would
+    otherwise be visible in server logs, browser history, and network monitoring.
+
+    Returns:
+        Dict with 'ticket' field containing the single-use ticket
+    """
+    import secrets
+
+    # Generate a cryptographically secure random ticket
+    ticket = secrets.token_urlsafe(32)
+
+    # Store ticket in Redis with short TTL (30 seconds) and user binding
+    ticket_data = f"{current_user['id']}:{current_user['phase']}"
+    await RedisClient.set_cache(
+        f"ws_ticket:{ticket}",
+        ticket_data,
+        ttl=30  # 30 second expiry
+    )
+
+    return {"ticket": ticket}
+
+
+async def validate_websocket_ticket(ticket: str) -> Optional[Dict[str, str]]:
+    """
+    Validate and consume a WebSocket authentication ticket.
+
+    Args:
+        ticket: The single-use ticket to validate
+
+    Returns:
+        Dict with user_id and phase if valid, None otherwise
+    """
+    ticket_key = f"ws_ticket:{ticket}"
+
+    # Get and immediately delete ticket (single-use)
+    ticket_data = await RedisClient.get_cache(ticket_key)
+    if ticket_data:
+        # Delete immediately to prevent reuse
+        await RedisClient.delete_cache(ticket_key)
+
+        # Parse ticket data (format: "user_id:phase")
+        parts = ticket_data.split(":", 1)
+        if len(parts) == 2:
+            return {"user_id": parts[0], "phase": parts[1]}
+
+    return None
+
+
 # Provider Management Endpoints
 
 @router.get("/providers", response_model=AvailableProvidersResponse)
@@ -407,30 +475,44 @@ async def set_user_provider(
 @router.websocket("/ws")
 async def websocket_chat_endpoint(
     websocket: WebSocket,
-    token: str = Query(...),
+    ticket: str = Query(..., description="Single-use authentication ticket from /ws/ticket"),
     is_login: bool = Query(False),
     db=Depends(get_database),
 ):
     """
     WebSocket endpoint for real-time chat with the AI coach.
 
-    Authentication is done via query parameter token.
-    Messages are streamed from Claude API with Tony Robbins persona.
+    SECURITY: Authentication is done via single-use ticket obtained from POST /ws/ticket.
+    This prevents JWT token exposure in URLs which could leak through logs, browser history,
+    and referrer headers.
 
     Client messages should be JSON: {"type": "message", "content": "..."}
     Server responses are JSON: {"type": "response_chunk|response|error", "content": "...", ...}
     """
     user = None
+    user_id = None
+    user_phase = None
 
     try:
-        # Authenticate user
-        user = await get_user_from_token(token, db)
-        if not user:
-            await websocket.close(code=4001, reason="Invalid or expired token")
+        # SECURITY: Validate single-use ticket instead of raw JWT token
+        # The ticket is consumed (deleted) upon validation to prevent reuse
+        ticket_data = await validate_websocket_ticket(ticket)
+        if not ticket_data:
+            await websocket.close(code=4001, reason="Invalid or expired ticket")
             return
 
-        user_id = user["id"]
-        user_phase = user["phase"]
+        user_id = ticket_data["user_id"]
+        user_phase = ticket_data["phase"]
+
+        # Fetch full user data for the session
+        from bson import ObjectId
+        user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+        if not user_doc:
+            await websocket.close(code=4001, reason="User not found")
+            return
+
+        from app.models.user import UserModel
+        user = UserModel.serialize_user(user_doc)
 
         # Check chat access
         access = await ChatAccessControl.can_access_chat(user_id, user_phase, db)
@@ -444,13 +526,20 @@ async def websocket_chat_endpoint(
             await websocket.close(code=4003, reason=access["reason"])
             return
 
-        # Connect to WebSocket manager with session tracking
+        # Connect to WebSocket manager with session tracking and rate limiting
         import uuid
         session_id = str(uuid.uuid4())
 
-        connected = await connection_manager.connect(websocket, user_id, user_phase, session_id)
+        # SECURITY: Extract client IP for rate limiting
+        client_ip = None
+        if websocket.client:
+            client_ip = websocket.client.host
+
+        connected = await connection_manager.connect(
+            websocket, user_id, user_phase, session_id, client_ip=client_ip
+        )
         if not connected:
-            await websocket.close(code=4000, reason="Failed to establish connection")
+            await websocket.close(code=4029, reason="Rate limit exceeded or max connections reached")
             return
 
         # Send connected confirmation IMMEDIATELY (don't wait for welcome generation)

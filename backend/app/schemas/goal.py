@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 class MilestoneSchema(BaseModel):
     """Schema for a milestone within a goal."""
-    title: str
-    description: Optional[str] = None
+    # SECURITY: Length limits prevent resource exhaustion and excessive API costs
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
     target_date: Optional[datetime] = None
     completed: bool = False
     completed_at: Optional[datetime] = None
@@ -23,8 +24,14 @@ class GoalMetadataSchema(BaseModel):
 
 
 class GoalBase(BaseModel):
-    """Base goal schema with common fields."""
+    """
+    Base goal schema with common fields.
+
+    SECURITY: Length limits prevent resource exhaustion, excessive storage costs,
+    and help mitigate prompt injection attacks by limiting injection surface area.
+    """
     title: str = Field(..., min_length=1, max_length=200)
+    # SECURITY: 50KB limit prevents excessive API costs and storage abuse
     content: str = Field(default="", max_length=50000)
 
 
@@ -33,18 +40,43 @@ class GoalCreate(GoalBase):
     phase: str = Field(default="draft", pattern="^(draft|active|completed|archived)$")
     template_type: str = Field(default="custom", pattern="^(smart|okr|custom)$")
     deadline: Optional[datetime] = None
-    milestones: Optional[List[MilestoneSchema]] = None
-    tags: Optional[List[str]] = None
+    # SECURITY: Limit number of milestones to prevent abuse
+    milestones: Optional[List[MilestoneSchema]] = Field(None, max_length=50)
+    # SECURITY: Limit tags count and length
+    tags: Optional[List[str]] = Field(None, max_length=20)
+
+    @field_validator('tags')
+    @classmethod
+    def validate_tag_lengths(cls, v):
+        """Validate individual tag lengths."""
+        if v:
+            for tag in v:
+                if len(tag) > 50:
+                    raise ValueError('Each tag must be 50 characters or less')
+        return v
 
 
 class GoalUpdate(BaseModel):
     """Schema for updating an existing goal."""
     title: Optional[str] = Field(None, min_length=1, max_length=200)
+    # SECURITY: 50KB limit prevents excessive API costs and storage abuse
     content: Optional[str] = Field(None, max_length=50000)
     phase: Optional[str] = Field(None, pattern="^(draft|active|completed|archived)$")
     deadline: Optional[datetime] = None
-    milestones: Optional[List[MilestoneSchema]] = None
-    tags: Optional[List[str]] = None
+    # SECURITY: Limit number of milestones to prevent abuse
+    milestones: Optional[List[MilestoneSchema]] = Field(None, max_length=50)
+    # SECURITY: Limit tags count and length
+    tags: Optional[List[str]] = Field(None, max_length=20)
+
+    @field_validator('tags')
+    @classmethod
+    def validate_tag_lengths(cls, v):
+        """Validate individual tag lengths."""
+        if v:
+            for tag in v:
+                if len(tag) > 50:
+                    raise ValueError('Each tag must be 50 characters or less')
+        return v
 
 
 class GoalPhaseUpdate(BaseModel):

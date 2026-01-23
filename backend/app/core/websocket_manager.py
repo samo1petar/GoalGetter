@@ -5,11 +5,17 @@ Handles WebSocket connections, disconnections, and message broadcasting.
 import json
 import logging
 from typing import Dict, Set, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 
 logger = logging.getLogger(__name__)
+
+
+# SECURITY: Configuration for connection rate limiting
+MAX_CONNECTIONS_PER_USER = 5  # Maximum concurrent connections per user
+MAX_CONNECTION_ATTEMPTS_PER_MINUTE = 10  # Rate limit for connection attempts
+CONNECTION_ATTEMPT_WINDOW_SECONDS = 60  # Window for rate limiting
 
 
 class ConnectionManager:
@@ -26,6 +32,37 @@ class ConnectionManager:
         self.connection_info: Dict[WebSocket, Dict[str, Any]] = {}
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
+        # SECURITY: Track connection attempts for rate limiting (user_id -> list of timestamps)
+        self._connection_attempts: Dict[str, list] = {}
+        # SECURITY: Track connection attempts by IP for additional protection
+        self._ip_connection_attempts: Dict[str, list] = {}
+
+    def _clean_old_attempts(self, attempts: list) -> list:
+        """Remove connection attempts older than the rate limit window."""
+        cutoff = datetime.utcnow() - timedelta(seconds=CONNECTION_ATTEMPT_WINDOW_SECONDS)
+        return [ts for ts in attempts if ts > cutoff]
+
+    def _check_rate_limit(self, identifier: str, attempts_dict: Dict[str, list]) -> bool:
+        """
+        Check if an identifier (user_id or IP) has exceeded rate limits.
+
+        Returns:
+            True if within limits, False if rate limited
+        """
+        if identifier not in attempts_dict:
+            attempts_dict[identifier] = []
+
+        # Clean old attempts
+        attempts_dict[identifier] = self._clean_old_attempts(attempts_dict[identifier])
+
+        # Check if under limit
+        return len(attempts_dict[identifier]) < MAX_CONNECTION_ATTEMPTS_PER_MINUTE
+
+    def _record_attempt(self, identifier: str, attempts_dict: Dict[str, list]) -> None:
+        """Record a connection attempt for rate limiting."""
+        if identifier not in attempts_dict:
+            attempts_dict[identifier] = []
+        attempts_dict[identifier].append(datetime.utcnow())
 
     async def connect(
         self,
@@ -33,20 +70,45 @@ class ConnectionManager:
         user_id: str,
         user_phase: str = "goal_setting",
         session_id: Optional[str] = None,
+        client_ip: Optional[str] = None,
     ) -> bool:
         """
-        Accept a new WebSocket connection.
+        Accept a new WebSocket connection with rate limiting.
+
+        SECURITY: Implements rate limiting to prevent connection flooding attacks.
 
         Args:
             websocket: The WebSocket connection
             user_id: The user's ID
             user_phase: The user's current phase
             session_id: Unique session identifier for context tracking
+            client_ip: Client IP address for additional rate limiting
 
         Returns:
             True if connection successful, False otherwise
         """
         try:
+            async with self._lock:
+                # SECURITY: Check rate limits before accepting connection
+                if not self._check_rate_limit(user_id, self._connection_attempts):
+                    logger.warning(f"Rate limit exceeded for user {user_id}")
+                    return False
+
+                if client_ip and not self._check_rate_limit(client_ip, self._ip_connection_attempts):
+                    logger.warning(f"Rate limit exceeded for IP {client_ip}")
+                    return False
+
+                # SECURITY: Check concurrent connection limit per user
+                current_count = self.get_user_connection_count(user_id)
+                if current_count >= MAX_CONNECTIONS_PER_USER:
+                    logger.warning(f"Max connections ({MAX_CONNECTIONS_PER_USER}) exceeded for user {user_id}")
+                    return False
+
+                # Record the connection attempt for rate limiting
+                self._record_attempt(user_id, self._connection_attempts)
+                if client_ip:
+                    self._record_attempt(client_ip, self._ip_connection_attempts)
+
             await websocket.accept()
 
             async with self._lock:
@@ -60,6 +122,7 @@ class ConnectionManager:
                     "user_id": user_id,
                     "user_phase": user_phase,
                     "session_id": session_id,
+                    "client_ip": client_ip,
                     "connected_at": datetime.utcnow().isoformat(),
                     "message_count": 0,  # Track messages for periodic context save
                 }

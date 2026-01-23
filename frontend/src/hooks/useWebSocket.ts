@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useUIStore } from '@/stores/uiStore';
 import { WebSocketClient } from '@/lib/websocket/WebSocketClient';
+import { chatApi } from '@/lib/api/chat';
 import type { WebSocketMessage, DraftGoalPayload, LLMProvider } from '@/types';
 import { toast } from 'sonner';
 
@@ -38,7 +39,16 @@ export function useWebSocket() {
     }
 
     setConnectionStatus('connecting');
-    const client = new WebSocketClient(WS_URL, accessToken);
+
+    // Create a ticket fetcher function that will be called each time
+    // a WebSocket connection is established (including reconnections).
+    // This ensures each connection uses a fresh, single-use ticket.
+    const fetchTicket = async (): Promise<string> => {
+      const response = await chatApi.getWebSocketTicket();
+      return response.ticket;
+    };
+
+    const client = new WebSocketClient(WS_URL, fetchTicket);
     wsRef.current = client;
 
     const unsubMessage = client.onMessage((data: WebSocketMessage) => {
@@ -198,7 +208,8 @@ export function useWebSocket() {
       setConnectionStatus('disconnected');
     });
 
-    client.connect();
+    // connect() is now async, but we handle errors within it
+    void client.connect();
 
     return () => {
       unsubMessage();
@@ -253,7 +264,8 @@ export function useWebSocket() {
   const reconnect = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.disconnect();
-      wsRef.current.connect();
+      // connect() is now async, but we handle errors within it
+      void wsRef.current.connect();
     }
   }, []);
 

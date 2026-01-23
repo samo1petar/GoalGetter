@@ -119,7 +119,7 @@ async def google_oauth_login(
 @router.get("/google/callback", response_model=LoginResponse)
 async def google_oauth_callback(
     code: str = Query(..., description="Authorization code from Google"),
-    state: str = Query(None, description="State parameter for CSRF protection"),
+    state: str = Query(..., description="State parameter for CSRF protection (required)"),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -128,8 +128,10 @@ async def google_oauth_callback(
     This endpoint receives the authorization code from Google,
     exchanges it for user information, and creates/logs in the user.
 
+    SECURITY: State parameter is required to prevent CSRF attacks.
+
     - **code**: Authorization code from Google (required)
-    - **state**: State parameter for CSRF validation (optional)
+    - **state**: State parameter for CSRF validation (required)
 
     Returns user info and authentication tokens.
     """
@@ -280,7 +282,9 @@ async def setup_2fa(
 
 
 @router.post("/2fa/verify")
+@limiter.limit("5/minute")  # SECURITY: Strict rate limit to prevent brute-force attacks on 2FA codes
 async def verify_2fa(
+    request: Request,
     data: Verify2FARequest,
     current_user: dict = Depends(get_current_active_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -291,6 +295,8 @@ async def verify_2fa(
     - **code**: 6-digit code from authenticator app
 
     Call this after setup to confirm 2FA is working.
+
+    SECURITY: Rate limited to 5 requests per minute to prevent brute-force attacks.
     """
     auth_service = AuthService(db)
     await auth_service.verify_and_enable_2fa(current_user["id"], data.code)
@@ -298,7 +304,9 @@ async def verify_2fa(
 
 
 @router.post("/2fa/disable")
+@limiter.limit("5/minute")  # SECURITY: Strict rate limit to prevent brute-force attacks on 2FA codes
 async def disable_2fa(
+    request: Request,
     data: Verify2FARequest,
     current_user: dict = Depends(get_current_active_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -309,6 +317,8 @@ async def disable_2fa(
     - **code**: 6-digit code from authenticator app or backup code
 
     Requires valid 2FA code to disable.
+
+    SECURITY: Rate limited to 5 requests per minute to prevent brute-force attacks.
     """
     auth_service = AuthService(db)
     await auth_service.disable_2fa(current_user["id"], data.code)

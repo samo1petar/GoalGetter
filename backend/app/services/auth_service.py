@@ -48,10 +48,11 @@ class AuthService:
         result = await self.db.users.insert_one(user_doc)
         user_doc["_id"] = result.inserted_id
 
-        # Generate tokens
+        # Generate tokens with token_version for refresh token invalidation support
         tokens = SecurityUtils.create_token_pair(
             user_id=str(result.inserted_id),
-            email=user_data.email
+            email=user_data.email,
+            token_version=user_doc.get("token_version", 1)
         )
 
         # Serialize user
@@ -94,10 +95,11 @@ class AuthService:
                 detail="Incorrect email or password"
             )
 
-        # Generate tokens
+        # Generate tokens with token_version for refresh token invalidation support
         tokens = SecurityUtils.create_token_pair(
             user_id=str(user["_id"]),
-            email=user["email"]
+            email=user["email"],
+            token_version=user.get("token_version", 1)
         )
 
         # Serialize user
@@ -111,11 +113,15 @@ class AuthService:
     async def refresh_access_token(self, refresh_token: str) -> Dict[str, str]:
         """
         Generate a new access token from a refresh token.
+
+        SECURITY: Validates token_version to ensure token hasn't been invalidated
+        by a password change.
         """
         # Verify refresh token
         payload = SecurityUtils.verify_token(refresh_token, token_type="refresh")
         user_id = payload.get("user_id")
         email = payload.get("email")
+        token_version = payload.get("token_version", 1)
 
         if not user_id or not email:
             raise HTTPException(
@@ -130,6 +136,16 @@ class AuthService:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found"
+            )
+
+        # SECURITY: Validate token_version matches user's current version
+        # If the user's password was changed, their token_version is incremented,
+        # which invalidates all previously issued refresh tokens
+        user_token_version = user.get("token_version", 1)
+        if token_version != user_token_version:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been invalidated due to security update. Please log in again."
             )
 
         # Create new access token
@@ -179,9 +195,12 @@ class AuthService:
 
         return auth_url
 
-    async def google_oauth_callback(self, code: str, state: Optional[str] = None) -> Dict[str, Any]:
+    async def google_oauth_callback(self, code: str, state: str) -> Dict[str, Any]:
         """
         Handle Google OAuth callback and create/login user.
+
+        SECURITY: State parameter is required to prevent CSRF attacks.
+        Requests without a valid state will be rejected.
         """
         if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
             raise HTTPException(
@@ -189,17 +208,25 @@ class AuthService:
                 detail="Google OAuth not configured"
             )
 
+        # SECURITY: State parameter is REQUIRED to prevent CSRF attacks
+        # Reject requests without state - this prevents attackers from initiating
+        # OAuth flows without CSRF protection
+        if not state:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth state parameter is required for security"
+            )
+
         # Validate state from Redis to prevent CSRF
-        if state:
-            from app.core.redis import RedisClient
-            stored_state = await RedisClient.get_cache(f"oauth_state:{state}")
-            if not stored_state:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid or expired OAuth state"
-                )
-            # Delete state after use (one-time use)
-            await RedisClient.delete_cache(f"oauth_state:{state}")
+        from app.core.redis import RedisClient
+        stored_state = await RedisClient.get_cache(f"oauth_state:{state}")
+        if not stored_state:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OAuth state"
+            )
+        # Delete state after use (one-time use)
+        await RedisClient.delete_cache(f"oauth_state:{state}")
 
         # Exchange code for tokens
         token_url = "https://oauth2.googleapis.com/token"
@@ -335,6 +362,10 @@ class AuthService:
     async def confirm_password_reset(self, token: str, new_password: str) -> bool:
         """
         Validate reset token and update password.
+
+        SECURITY: Increments token_version to invalidate all existing refresh tokens,
+        preventing an attacker with a stolen token from maintaining access after
+        the user resets their password.
         """
         from app.core.redis import RedisClient
         from bson import ObjectId
@@ -347,15 +378,20 @@ class AuthService:
                 detail="Invalid or expired reset token"
             )
 
-        # Update password
+        # Update password and increment token_version to invalidate existing tokens
         hashed_password = SecurityUtils.get_password_hash(new_password)
 
+        # SECURITY: Use $inc to atomically increment token_version
+        # This invalidates ALL existing refresh tokens for this user
         result = await self.db.users.update_one(
             {"_id": ObjectId(user_id)},
             {
                 "$set": {
                     "hashed_password": hashed_password,
                     "updated_at": datetime.utcnow()
+                },
+                "$inc": {
+                    "token_version": 1  # Invalidate all existing refresh tokens
                 }
             }
         )
@@ -441,7 +477,12 @@ class AuthService:
         return True
 
     async def disable_2fa(self, user_id: str, code: str) -> bool:
-        """Disable 2FA after code verification."""
+        """
+        Disable 2FA after code verification.
+
+        SECURITY: If a backup code is used, it is invalidated even in the
+        disable_2fa flow to maintain single-use property.
+        """
         import pyotp
         from bson import ObjectId
 
@@ -452,13 +493,25 @@ class AuthService:
         # Verify the code first
         totp = pyotp.TOTP(user["two_factor_secret"])
         code_valid = totp.verify(code)
+        used_backup_code_hash = None
 
         # If TOTP code is invalid, check if it's a backup code
         if not code_valid:
-            code_valid = self._verify_backup_code(user, code)
+            code_valid, used_backup_code_hash = self._verify_backup_code(user, code)
 
         if not code_valid:
             raise HTTPException(status_code=400, detail="Invalid verification code")
+
+        # SECURITY: If a backup code was used, remove it from the list before disabling 2FA
+        # This ensures the backup code cannot be reused if 2FA is re-enabled
+        if used_backup_code_hash:
+            backup_codes = user.get("two_factor_backup_codes", [])
+            new_backup_codes = [bc for bc in backup_codes if bc != used_backup_code_hash]
+            # Update backup codes first (in case disable operation is interrupted)
+            await self.db.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"two_factor_backup_codes": new_backup_codes}}
+            )
 
         await self.db.users.update_one(
             {"_id": ObjectId(user_id)},
@@ -474,13 +527,26 @@ class AuthService:
 
         return True
 
-    def _verify_backup_code(self, user: dict, code: str) -> bool:
-        """Verify a backup code and remove it if valid."""
+    def _verify_backup_code(self, user: dict, code: str) -> tuple[bool, Optional[str]]:
+        """
+        Verify a backup code.
+
+        SECURITY: Returns both validation result and the matching hash so it can be
+        removed after use to ensure single-use property of backup codes.
+
+        Args:
+            user: User document
+            code: Backup code to verify
+
+        Returns:
+            Tuple of (is_valid, matching_hash) where matching_hash is the hash
+            that should be removed from the user's backup codes
+        """
         backup_codes = user.get("two_factor_backup_codes", [])
         for stored_hash in backup_codes:
             if SecurityUtils.verify_password(code.upper(), stored_hash):
-                return True
-        return False
+                return True, stored_hash
+        return False, None
 
     async def login_user_with_2fa(self, login_data, totp_code: str = None) -> dict:
         """
@@ -530,26 +596,26 @@ class AuthService:
             totp = pyotp.TOTP(user["two_factor_secret"])
             if not totp.verify(totp_code):
                 # Check backup codes
-                if not self._verify_backup_code(user, totp_code):
+                backup_valid, used_hash = self._verify_backup_code(user, totp_code)
+                if not backup_valid:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Invalid 2FA code"
                     )
-                # If backup code was used, remove it from the list
-                backup_codes = user.get("two_factor_backup_codes", [])
-                new_backup_codes = [
-                    bc for bc in backup_codes
-                    if not SecurityUtils.verify_password(totp_code.upper(), bc)
-                ]
-                await self.db.users.update_one(
-                    {"_id": user["_id"]},
-                    {"$set": {"two_factor_backup_codes": new_backup_codes}}
-                )
+                # SECURITY: Remove used backup code to ensure single-use property
+                if used_hash:
+                    backup_codes = user.get("two_factor_backup_codes", [])
+                    new_backup_codes = [bc for bc in backup_codes if bc != used_hash]
+                    await self.db.users.update_one(
+                        {"_id": user["_id"]},
+                        {"$set": {"two_factor_backup_codes": new_backup_codes}}
+                    )
 
-        # Generate tokens
+        # Generate tokens with token_version for refresh token invalidation support
         tokens = SecurityUtils.create_token_pair(
             user_id=str(user["_id"]),
-            email=user["email"]
+            email=user["email"],
+            token_version=user.get("token_version", 1)
         )
 
         # Serialize user

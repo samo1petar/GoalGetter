@@ -40,6 +40,9 @@ class UserModel:
             "two_factor_backup_codes": None,
             # LLM provider preference
             "llm_provider": "claude",  # Default to Claude
+            # SECURITY: Token version for invalidating all tokens on password change
+            # Increment this value when password is reset to invalidate existing refresh tokens
+            "token_version": 1,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "settings": {

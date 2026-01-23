@@ -51,13 +51,25 @@ class SecurityUtils:
         return encoded_jwt
 
     @staticmethod
-    def create_refresh_token(data: Dict[str, Any]) -> str:
-        """Create a JWT refresh token with unique JTI for blacklisting support."""
+    def create_refresh_token(data: Dict[str, Any], token_version: int = 1) -> str:
+        """
+        Create a JWT refresh token with unique JTI for blacklisting support.
+
+        SECURITY: Includes token_version to enable invalidation on password change.
+        When a user's password is changed, their token_version is incremented,
+        invalidating all existing refresh tokens.
+        """
         to_encode = data.copy()
         expire = datetime.utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
         # Add unique JTI (JWT ID) for token blacklisting support
         jti = str(uuid.uuid4())
-        to_encode.update({"exp": expire, "type": "refresh", "jti": jti})
+        # SECURITY: Include token_version to validate during refresh
+        to_encode.update({
+            "exp": expire,
+            "type": "refresh",
+            "jti": jti,
+            "token_version": token_version
+        })
         encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
         return encoded_jwt
 
@@ -84,12 +96,17 @@ class SecurityUtils:
             )
 
     @staticmethod
-    def create_token_pair(user_id: str, email: str) -> Dict[str, str]:
-        """Create both access and refresh tokens for a user."""
+    def create_token_pair(user_id: str, email: str, token_version: int = 1) -> Dict[str, str]:
+        """
+        Create both access and refresh tokens for a user.
+
+        SECURITY: token_version is included in refresh tokens to enable invalidation
+        when the user's password is changed.
+        """
         token_data = {"user_id": user_id, "email": email}
 
         access_token = SecurityUtils.create_access_token(token_data)
-        refresh_token = SecurityUtils.create_refresh_token(token_data)
+        refresh_token = SecurityUtils.create_refresh_token(token_data, token_version=token_version)
 
         return {
             "access_token": access_token,

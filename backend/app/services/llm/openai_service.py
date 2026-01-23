@@ -672,7 +672,7 @@ class OpenAIService(BaseLLMService):
 
     async def stream_message(
         self,
-        message: str,
+        message: Optional[str],
         conversation_history: Optional[List[Dict[str, str]]] = None,
         user_phase: str = "goal_setting",
         user_goals: Optional[List[Dict[str, Any]]] = None,
@@ -683,7 +683,9 @@ class OpenAIService(BaseLLMService):
         Stream a message response from OpenAI with tool support.
 
         Args:
-            message: The user's message
+            message: The user's message. Can be None if conversation_history
+                     already contains the user message (e.g., on follow-up
+                     tool rounds).
             conversation_history: Previous messages in the conversation
             user_phase: The user's current phase
             user_goals: The user's saved goals
