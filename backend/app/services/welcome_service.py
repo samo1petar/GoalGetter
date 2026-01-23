@@ -293,6 +293,24 @@ Example tone: "Welcome back! Last session you made great progress on your 'Learn
                 "error": str(e),
             }
 
+    async def generate_returning_user_summary(
+        self,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Generate a personalized summary for a returning user.
+
+        This is called asynchronously after the quick welcome is sent.
+        Skips the first-time user check since caller already verified.
+
+        Args:
+            user_id: The user's ID
+
+        Returns:
+            Dict with 'message' containing the AI-generated summary
+        """
+        return await self._generate_returning_user_welcome(user_id)
+
     async def _generate_returning_user_welcome(
         self,
         user_id: str,

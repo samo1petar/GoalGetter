@@ -2,6 +2,7 @@
 Chat API routes including WebSocket endpoint for real-time AI coaching.
 Implements Tony Robbins persona with chat access control.
 """
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -452,44 +453,89 @@ async def websocket_chat_endpoint(
             await websocket.close(code=4000, reason="Failed to establish connection")
             return
 
-        # Generate welcome message for the user (first-time or returning)
+        # Send connected confirmation IMMEDIATELY (don't wait for welcome generation)
         welcome_service = get_welcome_service(db)
-        welcome_data = await welcome_service.generate_welcome_message(user_id, is_login=is_login)
 
-        # Send connected confirmation
+        # Quick check if first-time user (fast - just DB queries)
+        is_first_time = await welcome_service.check_is_first_time_user(user_id)
+
         connected_message = {
             "type": "connected",
             "content": "Connected to GoalGetter AI Coach",
             "user_phase": user_phase,
             "meeting_id": access.get("meeting_id"),
             "session_id": session_id,
-            "has_context": welcome_data.get("has_context", False),
-            "is_first_time": welcome_data.get("is_first_time", False),
+            "has_context": not is_first_time,
+            "is_first_time": is_first_time,
         }
-
         await websocket.send_json(connected_message)
 
-        # Send and save the welcome message as the first assistant message
-        welcome_message_content = welcome_data.get("message")
-        if welcome_message_content:
-            # Save welcome message to database
-            welcome_message_doc = MessageModel.create_message_document(
-                user_id=user_id,
-                role="assistant",
-                content=welcome_message_content,
-                meeting_id=access.get("meeting_id"),
-            )
-            result = await db.chat_messages.insert_one(welcome_message_doc)
-            welcome_message_id = str(result.inserted_id)
+        # Handle welcome message based on user type
+        if is_login:
+            if is_first_time:
+                # First-time users: Send the full onboarding message (static, no LLM)
+                welcome_data = await welcome_service.generate_welcome_message(user_id, is_login=True)
+                welcome_message_content = welcome_data.get("message")
+                if welcome_message_content:
+                    welcome_message_doc = MessageModel.create_message_document(
+                        user_id=user_id,
+                        role="assistant",
+                        content=welcome_message_content,
+                        meeting_id=access.get("meeting_id"),
+                    )
+                    result = await db.chat_messages.insert_one(welcome_message_doc)
+                    await websocket.send_json({
+                        "type": "welcome",
+                        "content": welcome_message_content,
+                        "message_id": str(result.inserted_id),
+                        "is_first_time": True,
+                        "has_context": False,
+                    })
+            else:
+                # Returning users: Send quick static message immediately
+                quick_welcome = "Welcome back! Let me check on your progress..."
+                quick_welcome_doc = MessageModel.create_message_document(
+                    user_id=user_id,
+                    role="assistant",
+                    content=quick_welcome,
+                    meeting_id=access.get("meeting_id"),
+                )
+                quick_result = await db.chat_messages.insert_one(quick_welcome_doc)
+                await websocket.send_json({
+                    "type": "welcome",
+                    "content": quick_welcome,
+                    "message_id": str(quick_result.inserted_id),
+                    "is_first_time": False,
+                    "has_context": True,
+                })
 
-            # Send welcome message to the client
-            await websocket.send_json({
-                "type": "welcome",
-                "content": welcome_message_content,
-                "message_id": welcome_message_id,
-                "is_first_time": welcome_data.get("is_first_time", False),
-                "active_goals": welcome_data.get("active_goals", []),
-            })
+                # Generate detailed AI summary in background and send as follow-up
+                async def send_ai_summary():
+                    try:
+                        summary_data = await welcome_service.generate_returning_user_summary(user_id)
+                        summary_content = summary_data.get("message")
+                        if summary_content:
+                            # Save to database
+                            summary_doc = MessageModel.create_message_document(
+                                user_id=user_id,
+                                role="assistant",
+                                content=summary_content,
+                                meeting_id=access.get("meeting_id"),
+                            )
+                            summary_result = await db.chat_messages.insert_one(summary_doc)
+
+                            # Send to client
+                            await websocket.send_json({
+                                "type": "message",
+                                "role": "assistant",
+                                "content": summary_content,
+                                "message_id": str(summary_result.inserted_id),
+                                "timestamp": summary_doc["timestamp"].isoformat(),
+                            })
+                    except Exception as e:
+                        logger.warning(f"Failed to generate AI summary for user {user_id}: {e}")
+
+                asyncio.create_task(send_ai_summary())
 
         # Get user's goals for context
         user_goals = await get_user_goals(user_id, db)
