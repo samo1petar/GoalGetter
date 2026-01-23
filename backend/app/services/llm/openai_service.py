@@ -72,22 +72,12 @@ Phase 1: Goal Setting - User defines and refines his/hers goals. This is where u
 Phase 2: Tracking - Once users goals are set, user moves to tracking mode where he/she monitors progress, checks off milestones, and have regular check-in meetings with the AI coach to stay accountable.
 Users start in goal setting and transition to tracking once they're ready to execute on their plans.
 
-GOAL EDITING TOOLS:
-You have tools to help users create and refine their goals directly:
-
-- **create_goal**: Use when the user describes a new goal they want to achieve. Create well-structured goals using the appropriate template (SMART, OKR, or custom).
-- **update_goal**: Use to refine or expand existing goals. You can add milestones, update deadlines, or improve the goal description.
-- **set_goal_phase**: Use to activate draft goals or mark goals as complete when the user indicates they're ready.
-
-Guidelines for using tools:
-1. BE PROACTIVE - When a user talks about goals, immediately use tools to create or update them. Don't just discuss - take action!
-2. NO CONFIRMATION NEEDED - You don't need to ask "should I create this goal?" or "can I update this?" - just do it. The user can undo if needed.
-3. When user mentions wanting to achieve something, CREATE the goal right away
-4. When user provides more details about an existing goal, UPDATE it immediately
-5. When user says they're ready to start or have completed something, change the phase
-6. Use SMART criteria when creating goals unless the user prefers OKR
-7. Break down large goals into meaningful milestones
-8. Briefly explain what you did AFTER using a tool (not before)
+IMPORTANT LIMITATION:
+You cannot directly create or modify goals in this conversation. Instead:
+- Provide clear, actionable suggestions for goals the user should create
+- Help them refine their thinking and articulate their goals clearly
+- Encourage them to use the goal editor to capture and track their goals
+- You can still see their existing goals and drafts to provide relevant coaching
 
 Year is 2026.
 
@@ -535,8 +525,12 @@ class OpenAIService(BaseLLMService):
         return f"openai-{uuid.uuid4().hex[:12]}"
 
     def get_tools(self) -> List[Dict[str, Any]]:
-        """Return tool definitions in OpenAI's format."""
-        return OPENAI_TOOLS
+        """Return tool definitions in OpenAI's format.
+
+        Note: Goal editing tools are disabled for OpenAI models.
+        Only Claude has access to create_goal, update_goal, and set_goal_phase.
+        """
+        return []
 
     def build_system_prompt(
         self,
@@ -745,10 +739,12 @@ class OpenAIService(BaseLLMService):
                 "reasoning_effort": "minimal",
             }
 
-            # Add tools if enabled
-            if use_tools:
-                api_params["tools"] = OPENAI_TOOLS
-                api_params["tool_choice"] = "auto"
+            # Goal editing tools are disabled for OpenAI models.
+            # The use_tools parameter is accepted but ignored.
+            # Only Claude has access to goal manipulation tools.
+            # if use_tools:
+            #     api_params["tools"] = OPENAI_TOOLS
+            #     api_params["tool_choice"] = "auto"
 
             # Stream from OpenAI API
             full_content = ""
