@@ -25,7 +25,12 @@
       "Bash(/home/alfred/Projects/GoalGetter/start.sh:*)",
       "Bash(./start.sh)",
       "Bash(npm install:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run type-check:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
