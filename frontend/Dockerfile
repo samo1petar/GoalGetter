@@ -27,6 +27,9 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Ensure public directory exists (even if empty)
+RUN mkdir -p public
+
 # Build application
 RUN npm run build
 
