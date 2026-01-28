@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useGoals, useGoalMutations, useTemplates } from '@/hooks/useGoals';
+import { useEditorStore } from '@/stores/editorStore';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -32,10 +33,26 @@ export function GoalSelector({ value, onChange }: GoalSelectorProps) {
   const { data: goalsData, isLoading } = useGoals({ page_size: 50, sort_by: 'updated_at', sort_order: 'desc' });
   useTemplates(); // Prefetch templates
   const { createGoal, createFromTemplate } = useGoalMutations();
+  const { saveIfNeeded } = useEditorStore();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [templateType, setTemplateType] = useState<string>('custom');
+
+  // Handle goal change - save current goal before switching
+  const handleGoalChange = useCallback(
+    async (newGoalId: string) => {
+      // Save any pending changes to current goal before switching
+      try {
+        await saveIfNeeded();
+      } catch (error) {
+        console.error('Failed to save before switching goals:', error);
+        // Continue anyway
+      }
+      onChange(newGoalId || null);
+    },
+    [onChange, saveIfNeeded]
+  );
 
   const handleCreate = async () => {
     if (!title.trim()) return;
@@ -65,7 +82,7 @@ export function GoalSelector({ value, onChange }: GoalSelectorProps) {
     <div className="flex items-center gap-2">
       <Select
         value={value || ''}
-        onValueChange={(v) => onChange(v || null)}
+        onValueChange={handleGoalChange}
       >
         <SelectTrigger className="w-[200px]">
           <SelectValue placeholder="Select a goal">

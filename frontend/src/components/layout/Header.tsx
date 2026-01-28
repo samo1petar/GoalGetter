@@ -1,8 +1,10 @@
 'use client';
 
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -32,12 +34,24 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const { logout } = useAuth();
   const { user } = useAuthStore();
+  const { saveIfNeeded } = useEditorStore();
 
   const initials = user?.name
     ?.split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase() || 'U';
+
+  // Save any pending changes before logging out
+  const handleLogout = useCallback(async () => {
+    try {
+      await saveIfNeeded();
+    } catch (error) {
+      console.error('Failed to save before logout:', error);
+      // Continue with logout anyway
+    }
+    logout();
+  }, [logout, saveIfNeeded]);
 
   return (
     <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -115,7 +129,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </DropdownMenuItem>
               </Link>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive">
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 Log out
               </DropdownMenuItem>

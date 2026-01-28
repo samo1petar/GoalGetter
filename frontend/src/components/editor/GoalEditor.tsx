@@ -10,6 +10,7 @@ import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGoalMutations } from '@/hooks/useGoals';
+import { useEditorStore } from '@/stores/editorStore';
 import { Loader2 } from 'lucide-react';
 import {
   blocksToMarkdown,
@@ -31,12 +32,17 @@ interface GoalEditorProps {
 export function GoalEditor({ goalId, initialContent, contentFormat, onContentChange, onEditorReady }: GoalEditorProps) {
   const { updateGoal } = useGoalMutations();
   const { resolvedTheme } = useTheme();
+  const { registerSaveFunction, unregisterSaveFunction, setHasUnsavedChanges } = useEditorStore();
   const [mounted, setMounted] = useState(false);
   const isUpdatingFromExternal = useRef(false);
   // Track the last content we processed to detect external changes
   const lastProcessedContent = useRef<string | undefined>(undefined);
+  // Track the last content we saved to prevent refresh loop
+  const lastSavedContent = useRef<string | undefined>(undefined);
   // Track if this is the initial mount
   const isInitialMount = useRef(true);
+  // Store current content for save function
+  const currentContentRef = useRef<string | null>(null);
 
   // Handle hydration for theme
   useEffect(() => {
@@ -137,21 +143,61 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
     }, 0);
   }, [editor, initialContent, isMarkdownContent, clearUndoHistory]);
 
-  const { debouncedSave, isSaving } = useAutoSave({
-    delay: 2000,
+  const { debouncedSave, saveNow, isSaving, hasUnsavedChanges } = useAutoSave({
+    delay: 60000, // 60 seconds idle before auto-save
     onSave: async (content: string) => {
+      lastSavedContent.current = content;
       await updateGoal.mutateAsync({
         goalId,
         data: { content },
       });
     },
+    onUnsavedChanges: setHasUnsavedChanges,
   });
+
+  // Register save function with global store for external triggers
+  useEffect(() => {
+    const saveFunction = async () => {
+      if (currentContentRef.current) {
+        lastSavedContent.current = currentContentRef.current;
+        await updateGoal.mutateAsync({
+          goalId,
+          data: { content: currentContentRef.current },
+        });
+      }
+    };
+
+    registerSaveFunction(goalId, saveFunction);
+
+    return () => {
+      unregisterSaveFunction(goalId);
+    };
+  }, [goalId, registerSaveFunction, unregisterSaveFunction, updateGoal]);
+
+  // Save before page unload
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        // Trigger save (best effort, may not complete)
+        saveNow();
+        // Show browser's default "unsaved changes" dialog
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, saveNow]);
 
   // Handle content changes with Markdown conversion
   const handleEditorChange = useCallback(() => {
     if (!editor || isUpdatingFromExternal.current) return;
 
     const content = JSON.stringify(editor.document);
+    currentContentRef.current = content;
 
     // Convert blocks to Markdown for AI Coach context
     let markdown = '';
@@ -242,6 +288,12 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
       return;
     }
 
+    // If this content matches what we just saved, skip (prevents refresh loop)
+    if (initialContent === lastSavedContent.current) {
+      lastProcessedContent.current = initialContent;
+      return;
+    }
+
     // Content has changed externally (e.g., AI Coach updated the goal)
     // Update the editor with the new content
     if (initialContent !== undefined && editor) {
@@ -252,6 +304,8 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
       });
       updateContent(initialContent, contentFormat);
       lastProcessedContent.current = initialContent;
+      // Also update current content ref so save won't overwrite with old content
+      currentContentRef.current = initialContent;
     }
   }, [initialContent, contentFormat, updateContent, editor]);
 

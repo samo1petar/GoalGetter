@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDraftGoals } from '@/hooks/useDraftGoals';
 import { useUIStore } from '@/stores/uiStore';
@@ -16,6 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export function ChatContainer() {
   const { clearMessages, connectionStatus } = useChatStore();
   const { user } = useAuthStore();
+  const { saveIfNeeded } = useEditorStore();
   const { sendMessage } = useWebSocket();
   const { getDraftsArray, activeEditingGoalId } = useDraftGoals();
   const { activeGoalId } = useUIStore();
@@ -34,14 +36,23 @@ export function ChatContainer() {
   // Wrap sendMessage to include draft goals with Markdown content and active goal ID
   // The getDraftsArray() now returns content as Markdown (via contentMarkdown field)
   // which gives AI Coach better context about goal structure (headers, lists, etc.)
+  // Also saves any pending editor changes before sending to ensure AI has latest content
   const handleSendMessage = useCallback(
-    (content: string) => {
+    async (content: string) => {
+      // Save any pending changes before sending message to AI Coach
+      try {
+        await saveIfNeeded();
+      } catch (error) {
+        console.error('Failed to save before sending message:', error);
+        // Continue anyway - don't block the message
+      }
+
       const draftGoals = getDraftsArray();
       // Use activeEditingGoalId if available, otherwise fall back to activeGoalId
       const currentGoalId = activeEditingGoalId || activeGoalId || undefined;
       sendMessage(content, draftGoals, undefined, currentGoalId);
     },
-    [sendMessage, getDraftsArray, activeEditingGoalId, activeGoalId]
+    [sendMessage, getDraftsArray, activeEditingGoalId, activeGoalId, saveIfNeeded]
   );
 
   // Note: Chat history is intentionally NOT loaded on login.
