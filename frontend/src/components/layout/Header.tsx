@@ -43,13 +43,11 @@ export function Header({ onMenuClick }: HeaderProps) {
     .toUpperCase() || 'U';
 
   // Save any pending changes before logging out
-  const handleLogout = useCallback(async () => {
-    try {
-      await saveIfNeeded();
-    } catch (error) {
+  const handleLogout = useCallback(() => {
+    // Fire-and-forget save, then logout immediately
+    saveIfNeeded().catch((error) => {
       console.error('Failed to save before logout:', error);
-      // Continue with logout anyway
-    }
+    });
     logout();
   }, [logout, saveIfNeeded]);
 

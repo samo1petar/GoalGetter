@@ -38,14 +38,11 @@ export function ChatContainer() {
   // which gives AI Coach better context about goal structure (headers, lists, etc.)
   // Also saves any pending editor changes before sending to ensure AI has latest content
   const handleSendMessage = useCallback(
-    async (content: string) => {
-      // Save any pending changes before sending message to AI Coach
-      try {
-        await saveIfNeeded();
-      } catch (error) {
+    (content: string) => {
+      // Save any pending changes before sending message to AI Coach (fire-and-forget)
+      saveIfNeeded().catch((error) => {
         console.error('Failed to save before sending message:', error);
-        // Continue anyway - don't block the message
-      }
+      });
 
       const draftGoals = getDraftsArray();
       // Use activeEditingGoalId if available, otherwise fall back to activeGoalId

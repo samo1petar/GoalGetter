@@ -6,8 +6,6 @@ interface UseAutoSaveOptions {
   /** Delay in ms before auto-saving after last change. Default: 60000 (60 seconds) */
   delay?: number;
   onSave: (content: string) => Promise<void>;
-  /** Callback when unsaved changes status changes */
-  onUnsavedChanges?: (hasChanges: boolean) => void;
 }
 
 /**
@@ -15,18 +13,13 @@ interface UseAutoSaveOptions {
  * Saves after a period of inactivity (default 60 seconds) to avoid
  * disrupting the user's editing flow.
  */
-export function useAutoSave({ delay = 60000, onSave, onUnsavedChanges }: UseAutoSaveOptions) {
+export function useAutoSave({ delay = 60000, onSave }: UseAutoSaveOptions) {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingContentRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
-
-  // Notify parent of unsaved changes status
-  useEffect(() => {
-    onUnsavedChanges?.(hasUnsavedChanges);
-  }, [hasUnsavedChanges, onUnsavedChanges]);
 
   const save = useCallback(
     async (content: string) => {

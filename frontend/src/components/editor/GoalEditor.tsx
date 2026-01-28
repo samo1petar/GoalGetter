@@ -152,15 +152,27 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
         data: { content },
       });
     },
-    onUnsavedChanges: setHasUnsavedChanges,
   });
+
+  // Sync hasUnsavedChanges with editorStore (use ref to prevent loops)
+  const prevHasUnsavedChanges = useRef(hasUnsavedChanges);
+  useEffect(() => {
+    if (prevHasUnsavedChanges.current !== hasUnsavedChanges) {
+      prevHasUnsavedChanges.current = hasUnsavedChanges;
+      setHasUnsavedChanges(hasUnsavedChanges);
+    }
+  }, [hasUnsavedChanges, setHasUnsavedChanges]);
+
+  // Store updateGoal ref to avoid dependency issues
+  const updateGoalRef = useRef(updateGoal);
+  updateGoalRef.current = updateGoal;
 
   // Register save function with global store for external triggers
   useEffect(() => {
     const saveFunction = async () => {
       if (currentContentRef.current) {
         lastSavedContent.current = currentContentRef.current;
-        await updateGoal.mutateAsync({
+        await updateGoalRef.current.mutateAsync({
           goalId,
           data: { content: currentContentRef.current },
         });
@@ -172,7 +184,7 @@ export function GoalEditor({ goalId, initialContent, contentFormat, onContentCha
     return () => {
       unregisterSaveFunction(goalId);
     };
-  }, [goalId, registerSaveFunction, unregisterSaveFunction, updateGoal]);
+  }, [goalId, registerSaveFunction, unregisterSaveFunction]);
 
   // Save before page unload
   useEffect(() => {

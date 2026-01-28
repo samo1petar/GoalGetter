@@ -41,14 +41,11 @@ export function GoalSelector({ value, onChange }: GoalSelectorProps) {
 
   // Handle goal change - save current goal before switching
   const handleGoalChange = useCallback(
-    async (newGoalId: string) => {
-      // Save any pending changes to current goal before switching
-      try {
-        await saveIfNeeded();
-      } catch (error) {
+    (newGoalId: string) => {
+      // Save any pending changes to current goal before switching (fire-and-forget)
+      saveIfNeeded().catch((error) => {
         console.error('Failed to save before switching goals:', error);
-        // Continue anyway
-      }
+      });
       onChange(newGoalId || null);
     },
     [onChange, saveIfNeeded]
